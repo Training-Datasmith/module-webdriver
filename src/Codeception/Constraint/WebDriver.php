@@ -20,7 +20,6 @@ class WebDriver extends Page
 {
     /**
      * @param WebDriverElement[] $nodes
-     * @return bool
      */
     protected function matches($nodes): bool
     {
@@ -35,7 +34,7 @@ class WebDriver extends Page
             if (!$node->isDisplayed()) {
                 continue;
             }
-            if (parent::matches(htmlspecialchars_decode($node->getText(), ENT_QUOTES | ENT_SUBSTITUTE))) {
+            if (parent::matches(htmlspecialchars_decode((string) $node->getText(), ENT_QUOTES | ENT_SUBSTITUTE))) {
                 return true;
             }
         }
@@ -45,7 +44,6 @@ class WebDriver extends Page
     /**
      * @param WebDriverElement[] $nodes
      * @param string|array|WebDriverBy $selector
-     * @param ComparisonFailure|null $comparisonFailure
      */
     protected function fail($nodes, $selector, ?ComparisonFailure $comparisonFailure = null): never
     {
@@ -73,7 +71,6 @@ class WebDriver extends Page
 
     /**
      * @param WebDriverElement[] $nodes
-     * @return string
      */
     protected function failureDescription($nodes): string
     {
@@ -86,14 +83,12 @@ class WebDriver extends Page
 
     /**
      * @param WebDriverElement[] $nodes
-     * @param string|null $contains
-     * @return string
      */
     protected function nodesList(array $nodes, ?string $contains = null): string
     {
         $output = "";
         foreach ($nodes as $node) {
-            if ($contains && strpos($node->getText(), $contains) === false) {
+            if ($contains && !str_contains((string) $node->getText(), $contains)) {
                 continue;
             }
             $message = new Message("\n+ <%s> %s");

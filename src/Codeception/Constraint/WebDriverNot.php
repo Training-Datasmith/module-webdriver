@@ -23,11 +23,10 @@ class WebDriverNot extends WebDriver
     /**
      * @param WebDriverElement[] $nodes
      * @param string|array|WebDriverBy $selector
-     * @param ComparisonFailure|null $comparisonFailure
      */
     protected function fail($nodes, $selector, ?ComparisonFailure $comparisonFailure = null): never
     {
-        if (!is_string($selector) || strpos($selector, "'") === false) {
+        if (!is_string($selector) || !str_contains($selector, "'")) {
             $selector = Locator::humanReadableString($selector);
         }
         if (!$this->string) {

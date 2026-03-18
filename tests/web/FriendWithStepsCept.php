@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 $I = new WebGuy($scenario);
 $I->wantTo('call friend with steps to ask expert work');
 $I->amOnPage('/info');

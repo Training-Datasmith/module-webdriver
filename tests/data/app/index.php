@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 if (!headers_sent()) {
     header('Content-Type: text/html; charset=UTF-8');
 }
@@ -8,7 +10,7 @@ require_once('glue.php');
 require_once('data.php');
 require_once('controllers.php');
 
-$urls = array(
+$urls = [
     '/' => 'index',
     '/info' => 'info',
     '/cookies' => 'cookies',
@@ -44,6 +46,6 @@ $urls = array(
     '/basehref' => 'basehref',
     '/jserroronload' => 'jserroronload',
     '/minimal' => 'minimal',
-);
+];
 
 glue::stick($urls);

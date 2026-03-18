@@ -18,13 +18,13 @@ class WebDriverConstraintTest extends TestCase
 
     public function testEvaluation()
     {
-        $nodes = array(new TestedWebElement('Hello world'), new TestedWebElement('Bye world'));
+        $nodes = [new TestedWebElement('Hello world'), new TestedWebElement('Bye world')];
         $this->constraint->evaluate($nodes);
     }
 
     public function testFailMessageResponseWithStringSelector()
     {
-        $nodes = array(new TestedWebElement('Bye warcraft'), new TestedWebElement('Bye world'));
+        $nodes = [new TestedWebElement('Bye warcraft'), new TestedWebElement('Bye world')];
         try {
             $this->constraint->evaluate($nodes, 'selector');
         } catch (\PHPUnit\Framework\AssertionFailedError $fail) {
@@ -36,12 +36,12 @@ class WebDriverConstraintTest extends TestCase
             $this->assertStringContainsString('+ <p> Bye warcraft', $fail->getMessage());
             return;
         }
-        $this->fail("should have failed, but not");
+        $this->fail('should have failed, but not');
     }
 
     public function testFailMessageResponseWhenMoreNodes()
     {
-        $nodes = array();
+        $nodes = [];
         for ($i = 0; $i < 15; $i++) {
             $nodes[] = new TestedWebElement("item $i");
         }
@@ -57,13 +57,13 @@ class WebDriverConstraintTest extends TestCase
             $this->assertStringContainsString('[total 15 elements]', $fail->getMessage());
             return;
         }
-        $this->fail("should have failed, but not");
+        $this->fail('should have failed, but not');
     }
 
     public function testFailMessageResponseWithoutUrl()
     {
         $this->constraint = new WebDriver('hello');
-        $nodes = array(new TestedWebElement('Bye warcraft'), new TestedWebElement('Bye world'));
+        $nodes = [new TestedWebElement('Bye warcraft'), new TestedWebElement('Bye world')];
         try {
             $this->constraint->evaluate($nodes, 'selector');
         } catch (\PHPUnit\Framework\AssertionFailedError $fail) {
@@ -71,6 +71,6 @@ class WebDriverConstraintTest extends TestCase
             $this->assertStringNotContainsString("Failed asserting that any element by 'selector' on page", $fail->getMessage());
             return;
         }
-        $this->fail("should have failed, but not");
+        $this->fail('should have failed, but not');
     }
 }

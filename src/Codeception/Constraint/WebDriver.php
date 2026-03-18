@@ -7,14 +7,16 @@ namespace Codeception\Constraint;
 use Codeception\Exception\ElementNotFound;
 use Codeception\Lib\Console\Message;
 use Codeception\Util\Locator;
-use Facebook\WebDriver\WebDriverBy;
-use Facebook\WebDriver\WebDriverElement;
-use PHPUnit\Framework\ExpectationFailedException;
-use SebastianBergmann\Comparator\ComparisonFailure;
 
 use function count;
+
+use Facebook\WebDriver\WebDriverBy;
+use Facebook\WebDriver\WebDriverElement;
+
 use function htmlspecialchars_decode;
-use function strpos;
+
+use PHPUnit\Framework\ExpectationFailedException;
+use SebastianBergmann\Comparator\ComparisonFailure;
 
 class WebDriver extends Page
 {
@@ -51,14 +53,14 @@ class WebDriver extends Page
             throw new ElementNotFound($selector, 'Element located either by name, CSS or XPath');
         }
 
-        $output = "Failed asserting that any element by " . Locator::humanReadableString($selector);
+        $output = 'Failed asserting that any element by ' . Locator::humanReadableString($selector);
         $output .= ' ' . $this->uriMessage('on page');
 
         if (count($nodes) < 5) {
             $output .= "\nElements: ";
             $output .= $this->nodesList($nodes);
         } else {
-            $message = new Message("[total %s elements]");
+            $message = new Message('[total %s elements]');
             $output .= $message->with(count($nodes));
         }
         $output .= "\ncontains text '" . $this->string . "'";
@@ -86,7 +88,7 @@ class WebDriver extends Page
      */
     protected function nodesList(array $nodes, ?string $contains = null): string
     {
-        $output = "";
+        $output = '';
         foreach ($nodes as $node) {
             if ($contains && !str_contains((string) $node->getText(), $contains)) {
                 continue;

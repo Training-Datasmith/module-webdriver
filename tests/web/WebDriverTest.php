@@ -125,7 +125,7 @@ final class WebDriverTest extends TestsForBrowsers
     {
         $this->module->amOnPage('/');
         @unlink(\Codeception\Configuration::outputDir() . 'testshot.png');
-        $testName = "debugTest";
+        $testName = 'debugTest';
 
         $this->module->makeScreenshot($testName);
         $this->assertFileExists(\Codeception\Configuration::outputDir() . 'debug/' . $testName . '.png');
@@ -140,7 +140,7 @@ final class WebDriverTest extends TestsForBrowsers
     {
         $this->module->amOnPage('/');
         @unlink(\Codeception\Configuration::outputDir() . 'testelementshot.png');
-        $testName = "debugTestElement";
+        $testName = 'debugTestElement';
 
         $this->module->makeElementScreenshot('#area4', $testName);
         $this->assertFileExists(\Codeception\Configuration::outputDir() . 'debug/' . $testName . '.png');
@@ -155,7 +155,7 @@ final class WebDriverTest extends TestsForBrowsers
     {
         $this->module->amOnPage('/');
         @unlink(\Codeception\Configuration::outputDir() . 'testshot.png');
-        $testName = "debugTest";
+        $testName = 'debugTest';
 
         $this->module->makeHtmlSnapshot($testName);
         $this->assertFileExists(\Codeception\Configuration::outputDir() . 'debug/' . $testName . '.html');
@@ -172,7 +172,7 @@ final class WebDriverTest extends TestsForBrowsers
                 'name' => 'Davert',
                 'age' => 'child',
                 'terms' => 'agree',
-                'description' => 'My Bio'
+                'description' => 'My Bio',
         ]);
         $form = data::get('form');
         $this->assertSame('Davert', $form['name']);
@@ -192,7 +192,7 @@ final class WebDriverTest extends TestsForBrowsers
             'name' => 'Davert',
             'age' => 'child',
             'terms' => 'agree',
-            'description' => 10
+            'description' => 10,
         ]);
         $form = data::get('form');
         $this->assertSame('Davert', $form['name']);
@@ -213,7 +213,7 @@ final class WebDriverTest extends TestsForBrowsers
                 'name' => 'Davert',
                 'age' => 'child',
                 'terms' => 'agree',
-                'description' => 'My Bio'
+                'description' => 'My Bio',
         ], $selector);
 
         $form = data::get('form');
@@ -248,7 +248,7 @@ final class WebDriverTest extends TestsForBrowsers
                 'name' => 'Davert',
                 'age' => 'child',
                 'terms' => 'agree',
-                'description' => 'My Bio'
+                'description' => 'My Bio',
         ], $selector);
 
         $form = data::get('form');
@@ -301,7 +301,6 @@ final class WebDriverTest extends TestsForBrowsers
         $this->assertSame('disagree', $form['terms']);
     }
 
-
     public function testRawSelenium()
     {
         $this->module->amOnPage('/');
@@ -331,7 +330,6 @@ final class WebDriverTest extends TestsForBrowsers
         $this->assertGreaterThanOrEqual($time + 3, time());
     }
 
-
     public function testSelectInvalidOptionFails()
     {
         $this->shouldFail();
@@ -346,7 +344,7 @@ final class WebDriverTest extends TestsForBrowsers
         $this->module->appendField('form #like', 'code');
         $this->module->click('Submit');
         $form = data::get('form');
-        $this->assertEmpty(array_diff($form['like'], ["eat", "code"]));
+        $this->assertEmpty(array_diff($form['like'], ['eat', 'code']));
     }
 
     public function testAppendFieldSelectFails()
@@ -474,7 +472,6 @@ final class WebDriverTest extends TestsForBrowsers
         $this->module->appendField('form input[name=terms]', 'Get Off123');
     }
 
-    //
     /**
      * @Issue https://github.com/Codeception/Codeception/pull/875
      * @env chrome
@@ -483,7 +480,7 @@ final class WebDriverTest extends TestsForBrowsers
     {
         $this->module->amOnPage('/form/complex');
         $this->module->submitForm('form', [
-           'password' => '123456'
+           'password' => '123456',
         ]);
         $form = data::get('form');
         $this->assertSame('123456', $form['password']);
@@ -559,11 +556,11 @@ final class WebDriverTest extends TestsForBrowsers
             'getPageSource' => Expected::once(function () {
             }),
             'manage' => Stub::make('\Facebook\WebDriver\WebDriverOptions', [
-                'getAvailableLogTypes' => Expected::atLeastOnce(fn() => []),
+                'getAvailableLogTypes' => Expected::atLeastOnce(fn () => []),
             ]),
         ]);
         $module = Stub::make(self::MODULE_CLASS, ['webDriver' => $fakeWd]);
-            $cept = (new \Codeception\Test\Cept('loginCept', 'loginCept.php'));
+        $cept = (new \Codeception\Test\Cept('loginCept', 'loginCept.php'));
         $module->_failed($cept, new \PHPUnit\Framework\AssertionFailedError());
     }
 
@@ -582,7 +579,6 @@ final class WebDriverTest extends TestsForBrowsers
         $this->module->click('#btn');
         $this->module->see('Hello');
     }
-
 
     public function testBug1467()
     {
@@ -661,7 +657,7 @@ final class WebDriverTest extends TestsForBrowsers
     {
         $this->notForPhantomJS();
         $fakeWdOptions = Stub::make('\Facebook\WebDriver\WebDriverOptions', [
-            'getCookies' => Expected::atLeastOnce(fn() => [
+            'getCookies' => Expected::atLeastOnce(fn () => [
                 Cookie::createFromArray([
                     'name' => 'PHPSESSID',
                     'value' => '123456',
@@ -672,12 +668,12 @@ final class WebDriverTest extends TestsForBrowsers
                     'value' => '_value_',
                     'path' => '/',
                     'domain' => '.3rd-party.net',
-                ])
+                ]),
             ]),
         ]);
 
         $fakeWd = Stub::make(self::WEBDRIVER_CLASS, [
-            'manage' => Expected::atLeastOnce(fn() => $fakeWdOptions),
+            'manage' => Expected::atLeastOnce(fn () => $fakeWdOptions),
         ]);
 
         // Mock the WebDriverOptions::getCookies() method on the first call to introduce a 3rd-party cookie
@@ -767,8 +763,6 @@ final class WebDriverTest extends TestsForBrowsers
         $this->notForPhantomJS();
         parent::testSendingCookies();
     }
-
-
 
     public function testCookiesWithPath()
     {
@@ -974,7 +968,7 @@ final class WebDriverTest extends TestsForBrowsers
         $this->module->performOn('.rememberMe', [
             'see' => 'Remember me next time',
             'seeElement' => '#LoginForm_rememberMe',
-            'dontSee' => 'Login'
+            'dontSee' => 'Login',
         ]);
         $this->assertSame(3, Assert::getCount() - $asserts);
         $this->module->see('Login');

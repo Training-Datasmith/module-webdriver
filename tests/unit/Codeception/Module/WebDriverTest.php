@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codeception\Stub;
 use Codeception\Stub\Expected;
 use Codeception\Test\Metadata;
@@ -32,7 +34,7 @@ class WebDriverTest extends \Codeception\Test\Unit
             'getPageSource' => Expected::once(function () {
             }),
             'manage' => Stub::make('\Facebook\WebDriver\WebDriverOptions', [
-                'getAvailableLogTypes' => Expected::atLeastOnce(fn() => []),
+                'getAvailableLogTypes' => Expected::atLeastOnce(fn () => []),
             ]),
         ]);
         $module = Stub::make(self::MODULE_CLASS, ['webDriver' => $fakeWd]);
@@ -48,12 +50,12 @@ class WebDriverTest extends \Codeception\Test\Unit
             'getPageSource' => Expected::once(function () {
             }),
             'manage' => Stub::make('\Facebook\WebDriver\WebDriverOptions', [
-                'getAvailableLogTypes' => Expected::atLeastOnce(fn() => []),
+                'getAvailableLogTypes' => Expected::atLeastOnce(fn () => []),
             ]),
         ]);
         $module = Stub::make(self::MODULE_CLASS, ['webDriver' => $fakeWd]);
         $cest = new \Codeception\Test\Cest(
-            new class {
+            new class () {
                 public function login()
                 {
                 }
@@ -66,7 +68,7 @@ class WebDriverTest extends \Codeception\Test\Unit
 
     public function testWebDriverWaits()
     {
-        $fakeWd = Stub::make(self::WEBDRIVER_CLASS, ['wait' => Expected::exactly(16, fn() => new Maybe())]);
+        $fakeWd = Stub::make(self::WEBDRIVER_CLASS, ['wait' => Expected::exactly(16, fn () => new Maybe())]);
         $module = Stub::make(self::MODULE_CLASS, ['webDriver' => $fakeWd]);
         $module->waitForElement(WebDriverBy::partialLinkText('yeah'));
         $module->waitForElement(['id' => 'user']);

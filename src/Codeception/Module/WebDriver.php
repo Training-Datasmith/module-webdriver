@@ -1,499 +1,440 @@
 <?php
 
 //phpcs:disable Generic.Files.LineLength.TooLong
-declare(strict_types=1);
-
+declare (strict_types=1);
 namespace Codeception\Module;
 
 use Closure;
 use Codeception\Constraint\Page as PageConstraint;
-use Codeception\Constraint\WebDriver as WebDriverConstraint;
-use Codeception\Constraint\WebDriverNot as WebDriverConstraintNot;
-use Codeception\Coverage\Subscriber\LocalServer;
-use Codeception\Exception\ConnectionException;
-use Codeception\Exception\ElementNotFound;
-use Codeception\Exception\MalformedLocatorException;
-use Codeception\Exception\ModuleConfigException;
-use Codeception\Exception\ModuleException;
-use Codeception\Exception\TestRuntimeException;
-use Codeception\Lib\Interfaces\ConflictsWithModule;
-use Codeception\Lib\Interfaces\ElementLocator;
-use Codeception\Lib\Interfaces\MultiSession as MultiSessionInterface;
-use Codeception\Lib\Interfaces\PageSourceSaver;
+use Codeception\Constraint\Web_Driver as WebDriverConstraint;
+use Codeception\Constraint\Web_Driver_Not as WebDriverConstraintNot;
+use Codeception\Coverage\Subscriber\Local_Server;
+use Codeception\Exception\Connection_Exception;
+use Codeception\Exception\Element_Not_Found;
+use Codeception\Exception\Malformed_Locator_Exception;
+use Codeception\Exception\Module_Config_Exception;
+use Codeception\Exception\Module_Exception;
+use Codeception\Exception\Test_Runtime_Exception;
+use Codeception\Lib\Interfaces\Conflicts_With_Module;
+use Codeception\Lib\Interfaces\Element_Locator;
+use Codeception\Lib\Interfaces\Multi_Session as MultiSessionInterface;
+use Codeception\Lib\Interfaces\Page_Source_Saver;
 use Codeception\Lib\Interfaces\Remote as RemoteInterface;
-use Codeception\Lib\Interfaces\RequiresPackage;
-use Codeception\Lib\Interfaces\ScreenshotSaver;
-use Codeception\Lib\Interfaces\SessionSnapshot;
+use Codeception\Lib\Interfaces\Requires_Package;
+use Codeception\Lib\Interfaces\Screenshot_Saver;
+use Codeception\Lib\Interfaces\Session_Snapshot;
 use Codeception\Lib\Interfaces\Web as WebInterface;
 use Codeception\Module as CodeceptionModule;
 use Codeception\Test\Descriptor;
-use Codeception\Test\Interfaces\ScenarioDriven;
-use Codeception\TestInterface;
-use Codeception\Util\ActionSequence;
+use Codeception\Test\Interfaces\Scenario_Driven;
+use Codeception\Test_Interface;
+use Codeception\Util\Action_Sequence;
 use Codeception\Util\Locator;
 use Codeception\Util\Uri;
 use Exception;
-use Facebook\WebDriver\Cookie;
-use Facebook\WebDriver\Cookie as WebDriverCookie;
-use Facebook\WebDriver\Exception\Internal\UnexpectedResponseException;
-use Facebook\WebDriver\Exception\InvalidElementStateException;
-use Facebook\WebDriver\Exception\InvalidSelectorException;
-use Facebook\WebDriver\Exception\NoSuchElementException;
-use Facebook\WebDriver\Exception\PhpWebDriverExceptionInterface;
-use Facebook\WebDriver\Interactions\WebDriverActions;
-use Facebook\WebDriver\Remote\LocalFileDetector;
-use Facebook\WebDriver\Remote\RemoteWebDriver;
-use Facebook\WebDriver\Remote\RemoteWebElement;
-use Facebook\WebDriver\Remote\UselessFileDetector;
-use Facebook\WebDriver\Remote\WebDriverCapabilityType;
-use Facebook\WebDriver\WebDriver as WebDriverInterface;
-use Facebook\WebDriver\WebDriverBy;
-use Facebook\WebDriver\WebDriverDimension;
-use Facebook\WebDriver\WebDriverElement;
-use Facebook\WebDriver\WebDriverExpectedCondition;
-use Facebook\WebDriver\WebDriverKeys;
-use Facebook\WebDriver\WebDriverSearchContext;
-use Facebook\WebDriver\WebDriverSelect;
+use Facebook\Web_Driver\Cookie;
+use Facebook\Web_Driver\Cookie as WebDriverCookie;
+use Facebook\Web_Driver\Exception\Internal\Unexpected_Response_Exception;
+use Facebook\Web_Driver\Exception\Invalid_Element_State_Exception;
+use Facebook\Web_Driver\Exception\Invalid_Selector_Exception;
+use Facebook\Web_Driver\Exception\No_Such_Element_Exception;
+use Facebook\Web_Driver\Exception\Php_Web_Driver_Exception_Interface;
+use Facebook\Web_Driver\Interactions\Web_Driver_Actions;
+use Facebook\Web_Driver\Remote\Local_File_Detector;
+use Facebook\Web_Driver\Remote\Remote_Web_Driver;
+use Facebook\Web_Driver\Remote\Remote_Web_Element;
+use Facebook\Web_Driver\Remote\Useless_File_Detector;
+use Facebook\Web_Driver\Remote\Web_Driver_Capability_Type;
+use Facebook\Web_Driver\Web_Driver as WebDriverInterface;
+use Facebook\Web_Driver\Web_Driver_By;
+use Facebook\Web_Driver\Web_Driver_Dimension;
+use Facebook\Web_Driver\Web_Driver_Element;
+use Facebook\Web_Driver\Web_Driver_Expected_Condition;
+use Facebook\Web_Driver\Web_Driver_Keys;
+use Facebook\Web_Driver\Web_Driver_Search_Context;
+use Facebook\Web_Driver\Web_Driver_Select;
 use InvalidArgumentException;
-use PHPUnit\Framework\AssertionFailedError as PHPUnitAssertionFailedError;
-use PHPUnit\Framework\SelfDescribing;
-
+use Php_Unit\Framework\Assertion_Failed_Error as PHPUnitAssertionFailedError;
+use Php_Unit\Framework\Self_Describing;
 /**
- * Run tests in real browsers using the W3C [WebDriver protocol](https://www.w3.org/TR/webdriver/).
- * There are multiple ways of running browser tests using WebDriver:
- *
- * ## Selenium (Recommended)
- *
- * * Java is required
- * * NodeJS is required
- *
- * The fastest way to get started is to [Install and launch Selenium using selenium-standalone NodeJS package](https://www.npmjs.com/package/selenium-standalone).
- *
- * Launch selenium standalone in separate console window:
- *
- * ```
- * selenium-standalone start
- * ```
- *
- * Update configuration in `Acceptance.suite.yml`:
- *
- * ```yaml
- * modules:
- *    enabled:
- *       - WebDriver:
- *          url: 'http://localhost/'
- *          browser: chrome # 'chrome' or 'firefox'
- * ```
- *
- * ## Headless Chrome Browser
- *
- * To enable headless mode (launch tests without showing a window) for Chrome browser using Selenium use this config in `Acceptance.suite.yml`:
- *
- * ```yaml
- * modules:
- *    enabled:
- *       - WebDriver:
- *          url: 'http://localhost/'
- *          browser: chrome
- *          capabilities:
- *             goog:chromeOptions:
- *                args: ["--headless"]
- * ```
- *
- * ## Headless Selenium in Docker
- *
- * Docker can ship Selenium Server with all its dependencies and browsers inside a single container.
- * Running tests inside Docker is as easy as pulling [official selenium image](https://github.com/SeleniumHQ/docker-selenium) and starting a container with Chrome:
- *
- * ```
- * docker run --net=host --shm-size 2g selenium/standalone-chrome
- * ```
- *
- * By using `--net=host` allow Selenium to access local websites.
- *
- * ## Local Chrome and/or Firefox
- *
- * Tests can be executed directly through ChromeDriver or GeckoDriver (for Firefox). Consider using this option if you don't plan to use Selenium.
- *
- * ### ChromeDriver
- *
- * * Download and install [ChromeDriver](https://sites.google.com/chromium.org/driver/downloads)
- * * Launch ChromeDriver in a separate console window: `chromedriver --url-base=/wd/hub`.
- *
- * Configuration in `Acceptance.suite.yml`:
- *
- * ```yaml
- * modules:
- *    enabled:
- *       - WebDriver:
- *          browser: chrome
- *          url: 'http://localhost/'
- *          window_size: 2000x1000
- *          port: 9515
- *          capabilities:
- *              goog:chromeOptions:
- *                  args: ["--headless"] # Run Chrome in headless mode
- *                  prefs:
- *                      download.default_directory: "..."
- * ```
- * See here for additional [Chrome options](https://sites.google.com/chromium.org/driver/capabilities)
- *
- *
- * ### GeckoDriver
- *
- * * [GeckoDriver](https://github.com/mozilla/geckodriver/releases) must be installed
- * * Start GeckoDriver in a separate console window: `geckodriver`.
- *
- * Configuration in `Acceptance.suite.yml`:
- *
- * ```yaml
- * modules:
- *    enabled:
- *       - WebDriver:
- *          browser: firefox
- *          url: 'http://localhost/'
- *          window_size: 2000x1000
- *          path: ''
- *          capabilities:
- *              acceptInsecureCerts: true # allow self-signed certificates
- *              moz:firefoxOptions:
- *                  args: ["-headless"] # Run Firefox in headless mode
- *                  prefs:
- *                      intl.accept_languages: "de-AT" # Set HTTP-Header `Accept-Language: de-AT` for requests
- * ```
- * See here for [Firefox capabilities](https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities#List_of_capabilities)
- *
- * ## Cloud Testing
- *
- * Cloud Testing services can run your WebDriver tests in the cloud.
- * In case you want to test a local site or site behind a firewall
- * you should use a tunnel application provided by a service.
- *
- * ### SauceLabs
- *
- * 1. Create an account at [SauceLabs.com](https://saucelabs.com/) to get your username and access key
- * 2. In the module configuration use the format `username`:`access_key`@ondemand.saucelabs.com' for `host`
- * 3. Configure `platformName` under `capabilities` to define the [Operating System](https://docs.saucelabs.com/basics/platform-configurator/)
- * 4. run a tunnel app if your site can't be accessed from Internet
- *
- * ```yaml
- *     modules:
- *        enabled:
- *           - WebDriver:
- *              url: http://mysite.com
- *              host: '<username>:<access key>@ondemand.saucelabs.com'
- *              port: 80
- *              browser: chrome
- *              capabilities:
- *                  platformName: 'Windows 10'
- * ```
- *
- * ### BrowserStack
- *
- * 1. Create an account at [BrowserStack](https://www.browserstack.com/) to get your username and access key
- * 2. In the module configuration use the format `username`:`access_key`@hub.browserstack.com' for `host`
- * 3. Configure `os` and `os_version` under `capabilities` to define the operating System
- * 4. If your site is available only locally or via VPN you should use a tunnel app. In this case add `browserstack.local` capability and set it to true.
- *
- * ```yaml
- *  modules:
- *      enabled:
- *          - WebDriver:
- *              url: http://mysite.com
- *              host: '<username>:<access key>@hub.browserstack.com'
- *              port: 80
- *              browser: chrome
- *              capabilities:
- *                  bstack:options:
- *                      os: Windows
- *                      osVersion: 10
- *                      local: true # for local testing
- * ```
- *
- * ### LambdaTest
- *
- * 1. Create an account at [LambdaTest](https://www.lambdatest.com) to get your username and access key
- * 2. In the module configuration use the format `username`:`access key`@hub.lambdatest.com' for `host`
- * 3. Configure `platformName`, 'browserVersion', and 'browserName' under `LT:Options` to define test environments.
- * 4. If your website is available only locally or via VPN you should use LambdaTest tunnel. In this case, you can add capability "tunnel":true;.
- *
- * ```yaml
- *  modules:
- *      enabled:
- *            - WebDriver:
-                  url: "https://openclassrooms.com"
-                  host: 'hub.lambdatest.com'
-                  port: 80
-                  browser: 'Chrome'
-                  capabilities:
-                      LT:Options:
-                      platformName: 'Windows 10'
-                      browserVersion: 'latest-5'
-                      browserName: 'Chrome'
-                      tunnel: true #for Local testing
- * ```
- *
- * ### TestingBot
- *
- * 1. Create an account at [TestingBot](https://testingbot.com/) to get your key and secret
- * 2. In the module configuration use the format `key`:`secret`@hub.testingbot.com' for `host`
- * 3. Configure `platformName` under `capabilities` to define the [Operating System](https://testingbot.com/support/getting-started/browsers.html)
- * 4. Run [TestingBot Tunnel](https://testingbot.com/support/other/tunnel) if your site can't be accessed from Internet
- *
- * ```yaml
- * modules:
- *    enabled:
- *       - WebDriver:
- *          url: http://mysite.com
- *          host: '<key>:<secret>@hub.testingbot.com'
- *          port: 80
- *          browser: chrome
- *          capabilities:
- *              platformName: Windows 10
- * ```
- *
- * ## Configuration
- *
- * * `url` *required* - Base URL for your app (amOnPage opens URLs relative to this setting).
- * * `browser` *required* - Browser to launch.
- * * `host` - Selenium server host (127.0.0.1 by default).
- * * `port` - Selenium server port (4444 by default).
- * * `restart` - Set to `false` (default) to use the same browser window for all tests, or set to `true` to create a new window for each test. In any case, when all tests are finished the browser window is closed.
- * * `start` - Autostart a browser for tests. Can be disabled if browser session is started with `_initializeSession` inside a Helper.
- * * `window_size` - Initial window size. Set to `maximize` or a dimension in the format `640x480`.
- * * `clear_cookies` - Set to false to keep cookies, or set to true (default) to delete all cookies between tests.
- * * `wait` (default: 0 seconds) - Whenever element is required and is not on page, wait for n seconds to find it before fail.
- * * `capabilities` - Sets Selenium [desired capabilities](https://github.com/SeleniumHQ/selenium/wiki/DesiredCapabilities). Should be a key-value array.
- * * `connection_timeout` - timeout for opening a connection to remote selenium server (30 seconds by default).
- * * `request_timeout` - timeout for a request to return something from remote selenium server (30 seconds by default).
- * * `pageload_timeout` - amount of time to wait for a page load to complete before throwing an error (default 0 seconds).
- * * `http_proxy` - sets http proxy server url for testing a remote server.
- * * `http_proxy_port` - sets http proxy server port
- * * `ssl_proxy` - sets ssl(https) proxy server url for testing a remote server.
- * * `ssl_proxy_port` - sets ssl(https) proxy server port
- * * `debug_log_entries` - how many selenium entries to print with `debugWebDriverLogs` or on fail (0 by default).
- * * `log_js_errors` - Set to true to include possible JavaScript to HTML report, or set to false (default) to deactivate. This will only work if `debug_log_entries` is set and its value is > 0. Also this will display JS errors as comments only if test fails.
- * * `webdriver_proxy` - sets http proxy to tunnel requests to the remote Selenium WebDriver through
- * * `webdriver_proxy_port` - sets http proxy server port to tunnel requests to the remote Selenium WebDriver through
- *
- * Example (`Acceptance.suite.yml`)
- *
- * ```yaml
- * modules:
- *    enabled:
- *       - WebDriver:
- *          url: 'http://localhost/'
- *          browser: firefox
- *          window_size: 1024x768
- *          capabilities:
- *              unhandledPromptBehaviour: 'accept'
- *              moz:firefoxOptions:
- *                  profile: '~/firefox-profiles/codeception-profile.zip.b64'
- * ```
- *
- * ## Loading Parts from other Modules
- *
- * While all Codeception modules are designed to work stand-alone, it's still possible to load *several* modules at once. To use e.g. the [Asserts module](https://codeception.com/docs/modules/Asserts) in your acceptance tests, just load it like this in your `acceptance.suite.yml`:
- *
- * ```yaml
- * modules:
- *     enabled:
- *         - WebDriver
- *         - Asserts
- * ```
- *
- * However, when loading a framework module (e.g. [Symfony](https://codeception.com/docs/modules/Symfony)) like this, it would lead to a conflict: When you call `$I->amOnPage()`, Codeception wouldn't know if you want to access the page using WebDriver's `amOnPage()`, or Symfony's `amOnPage()`. That's why possibly conflicting modules are separated into "parts". Here's how to load just the "services" part from e.g. Symfony:
- * ```yaml
- * modules:
- *     enabled:
- *         - WebDriver
- *         - Symfony:
- *             part: services
- * ```
- * To find out which parts each module has, look at the "Parts" header on the module's page.
- *
- * ## Usage
- *
- * ### Locating Elements
- *
- * Most methods in this module that operate on a DOM element (e.g. `click`) accept a locator as the first argument,
- * which can be either a string or an array.
- *
- * If the locator is an array, it should have a single element,
- * with the key signifying the locator type (`id`, `name`, `css`, `xpath`, `link`, or `class`)
- * and the value being the locator itself.
- * This is called a "strict" locator.
- * Examples:
- *
- * * `['id' => 'foo']` matches `<div id="foo">`
- * * `['name' => 'foo']` matches `<div name="foo">`
- * * `['css' => 'input[type=input][value=foo]']` matches `<input type="input" value="foo">`
- * * `['xpath' => "//input[@type='submit'][contains(@value, 'foo')]"]` matches `<input type="submit" value="foobar">`
- * * `['link' => 'Click here']` matches `<a href="google.com">Click here</a>`
- * * `['class' => 'foo']` matches `<div class="foo">`
- *
- * Writing good locators can be tricky.
- * The Mozilla team has written an excellent guide titled [Writing reliable locators for Selenium and WebDriver tests](https://blog.mozilla.org/webqa/2013/09/26/writing-reliable-locators-for-selenium-and-webdriver-tests/).
- *
- * If you prefer, you may also pass a string for the locator. This is called a "fuzzy" locator.
- * In this case, Codeception uses a a variety of heuristics (depending on the exact method called) to determine what element you're referring to.
- * For example, here's the heuristic used for the `submitForm` method:
- *
- * 1. Does the locator look like an ID selector (e.g. "#foo")? If so, try to find a form matching that ID.
- * 2. If nothing found, check if locator looks like a CSS selector. If so, run it.
- * 3. If nothing found, check if locator looks like an XPath expression. If so, run it.
- * 4. Throw an `ElementNotFound` exception.
- *
- * Be warned that fuzzy locators can be significantly slower than strict locators.
- * Especially if you use Selenium WebDriver with `wait` (aka implicit wait) option.
- * In the example above if you set `wait` to 5 seconds and use XPath string as fuzzy locator,
- * `submitForm` method will wait for 5 seconds at each step.
- * That means 5 seconds finding the form by ID, another 5 seconds finding by CSS
- * until it finally tries to find the form by XPath).
- * If speed is a concern, it's recommended you stick with explicitly specifying the locator type via the array syntax.
- *
- * ### Get Scenario Metadata
- *
- * You can inject `\Codeception\Scenario` into your test to get information about the current configuration:
- * ```php
- * use Codeception\Scenario;
- *
- * public function myTest(AcceptanceTester $I, Scenario $scenario)
- * {
- *     if ('firefox' === $scenario->current('browser')) {
- *         // ...
- *     }
- * }
- * ```
- * See [Get Scenario Metadata](https://codeception.com/docs/07-AdvancedUsage#Get-Scenario-Metadata) for more information on `$scenario`.
- *
- * ## Public Properties
- *
- * * `webDriver` - instance of `\Facebook\WebDriver\Remote\RemoteWebDriver`. Can be accessed from Helper classes for complex WebDriver interactions.
- *
- * ```php
- * // inside Helper class
- * $this->getModule('WebDriver')->webDriver->getKeyboard()->sendKeys('hello, webdriver');
- * ```
- *
- */
-class WebDriver extends CodeceptionModule implements
-    WebInterface,
-    RemoteInterface,
-    MultiSessionInterface,
-    SessionSnapshot,
-    ScreenshotSaver,
-    PageSourceSaver,
-    ElementLocator,
-    ConflictsWithModule,
-    RequiresPackage
+* Run tests in real browsers using the W3C [WebDriver protocol](https://www.w3.org/TR/webdriver/).
+* There are multiple ways of running browser tests using WebDriver:
+*
+* ## Selenium (Recommended)
+*
+* * Java is required
+* * NodeJS is required
+*
+* The fastest way to get started is to [Install and launch Selenium using selenium-standalone NodeJS package](https://www.npmjs.com/package/selenium-standalone).
+*
+* Launch selenium standalone in separate console window:
+*
+* ```
+* selenium-standalone start
+* ```
+*
+* Update configuration in `Acceptance.suite.yml`:
+*
+* ```yaml
+* modules:
+*    enabled:
+*       - WebDriver:
+*          url: 'http://localhost/'
+*          browser: chrome # 'chrome' or 'firefox'
+* ```
+*
+* ## Headless Chrome Browser
+*
+* To enable headless mode (launch tests without showing a window) for Chrome browser using Selenium use this config in `Acceptance.suite.yml`:
+*
+* ```yaml
+* modules:
+*    enabled:
+*       - WebDriver:
+*          url: 'http://localhost/'
+*          browser: chrome
+*          capabilities:
+*             goog:chromeOptions:
+*                args: ["--headless"]
+* ```
+*
+* ## Headless Selenium in Docker
+*
+* Docker can ship Selenium Server with all its dependencies and browsers inside a single container.
+* Running tests inside Docker is as easy as pulling [official selenium image](https://github.com/SeleniumHQ/docker-selenium) and starting a container with Chrome:
+*
+* ```
+* docker run --net=host --shm-size 2g selenium/standalone-chrome
+* ```
+*
+* By using `--net=host` allow Selenium to access local websites.
+*
+* ## Local Chrome and/or Firefox
+*
+* Tests can be executed directly through ChromeDriver or GeckoDriver (for Firefox). Consider using this option if you don't plan to use Selenium.
+*
+* ### ChromeDriver
+*
+* * Download and install [ChromeDriver](https://sites.google.com/chromium.org/driver/downloads)
+* * Launch ChromeDriver in a separate console window: `chromedriver --url-base=/wd/hub`.
+*
+* Configuration in `Acceptance.suite.yml`:
+*
+* ```yaml
+* modules:
+*    enabled:
+*       - WebDriver:
+*          browser: chrome
+*          url: 'http://localhost/'
+*          window_size: 2000x1000
+*          port: 9515
+*          capabilities:
+*              goog:chromeOptions:
+*                  args: ["--headless"] # Run Chrome in headless mode
+*                  prefs:
+*                      download.default_directory: "..."
+* ```
+* See here for additional [Chrome options](https://sites.google.com/chromium.org/driver/capabilities)
+*
+*
+* ### GeckoDriver
+*
+* * [GeckoDriver](https://github.com/mozilla/geckodriver/releases) must be installed
+* * Start GeckoDriver in a separate console window: `geckodriver`.
+*
+* Configuration in `Acceptance.suite.yml`:
+*
+* ```yaml
+* modules:
+*    enabled:
+*       - WebDriver:
+*          browser: firefox
+*          url: 'http://localhost/'
+*          window_size: 2000x1000
+*          path: ''
+*          capabilities:
+*              acceptInsecureCerts: true # allow self-signed certificates
+*              moz:firefoxOptions:
+*                  args: ["-headless"] # Run Firefox in headless mode
+*                  prefs:
+*                      intl.accept_languages: "de-AT" # Set HTTP-Header `Accept-Language: de-AT` for requests
+* ```
+* See here for [Firefox capabilities](https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities#List_of_capabilities)
+*
+* ## Cloud Testing
+*
+* Cloud Testing services can run your WebDriver tests in the cloud.
+* In case you want to test a local site or site behind a firewall
+* you should use a tunnel application provided by a service.
+*
+* ### SauceLabs
+*
+* 1. Create an account at [SauceLabs.com](https://saucelabs.com/) to get your username and access key
+* 2. In the module configuration use the format `username`:`access_key`@ondemand.saucelabs.com' for `host`
+* 3. Configure `platformName` under `capabilities` to define the [Operating System](https://docs.saucelabs.com/basics/platform-configurator/)
+* 4. run a tunnel app if your site can't be accessed from Internet
+*
+* ```yaml
+*     modules:
+*        enabled:
+*           - WebDriver:
+*              url: http://mysite.com
+*              host: '<username>:<access key>@ondemand.saucelabs.com'
+*              port: 80
+*              browser: chrome
+*              capabilities:
+*                  platformName: 'Windows 10'
+* ```
+*
+* ### BrowserStack
+*
+* 1. Create an account at [BrowserStack](https://www.browserstack.com/) to get your username and access key
+* 2. In the module configuration use the format `username`:`access_key`@hub.browserstack.com' for `host`
+* 3. Configure `os` and `os_version` under `capabilities` to define the operating System
+* 4. If your site is available only locally or via VPN you should use a tunnel app. In this case add `browserstack.local` capability and set it to true.
+*
+* ```yaml
+*  modules:
+*      enabled:
+*          - WebDriver:
+*              url: http://mysite.com
+*              host: '<username>:<access key>@hub.browserstack.com'
+*              port: 80
+*              browser: chrome
+*              capabilities:
+*                  bstack:options:
+*                      os: Windows
+*                      osVersion: 10
+*                      local: true # for local testing
+* ```
+*
+* ### LambdaTest
+*
+* 1. Create an account at [LambdaTest](https://www.lambdatest.com) to get your username and access key
+* 2. In the module configuration use the format `username`:`access key`@hub.lambdatest.com' for `host`
+* 3. Configure `platformName`, 'browserVersion', and 'browserName' under `LT:Options` to define test environments.
+* 4. If your website is available only locally or via VPN you should use LambdaTest tunnel. In this case, you can add capability "tunnel":true;.
+*
+* ```yaml
+*  modules:
+*      enabled:
+*            - WebDriver:
+                 url: "https://openclassrooms.com"
+                 host: 'hub.lambdatest.com'
+                 port: 80
+                 browser: 'Chrome'
+                 capabilities:
+                     LT:Options:
+                     platformName: 'Windows 10'
+                     browserVersion: 'latest-5'
+                     browserName: 'Chrome'
+                     tunnel: true #for Local testing
+* ```
+*
+* ### TestingBot
+*
+* 1. Create an account at [TestingBot](https://testingbot.com/) to get your key and secret
+* 2. In the module configuration use the format `key`:`secret`@hub.testingbot.com' for `host`
+* 3. Configure `platformName` under `capabilities` to define the [Operating System](https://testingbot.com/support/getting-started/browsers.html)
+* 4. Run [TestingBot Tunnel](https://testingbot.com/support/other/tunnel) if your site can't be accessed from Internet
+*
+* ```yaml
+* modules:
+*    enabled:
+*       - WebDriver:
+*          url: http://mysite.com
+*          host: '<key>:<secret>@hub.testingbot.com'
+*          port: 80
+*          browser: chrome
+*          capabilities:
+*              platformName: Windows 10
+* ```
+*
+* ## Configuration
+*
+* * `url` *required* - Base URL for your app (amOnPage opens URLs relative to this setting).
+* * `browser` *required* - Browser to launch.
+* * `host` - Selenium server host (127.0.0.1 by default).
+* * `port` - Selenium server port (4444 by default).
+* * `restart` - Set to `false` (default) to use the same browser window for all tests, or set to `true` to create a new window for each test. In any case, when all tests are finished the browser window is closed.
+* * `start` - Autostart a browser for tests. Can be disabled if browser session is started with `_initializeSession` inside a Helper.
+* * `window_size` - Initial window size. Set to `maximize` or a dimension in the format `640x480`.
+* * `clear_cookies` - Set to false to keep cookies, or set to true (default) to delete all cookies between tests.
+* * `wait` (default: 0 seconds) - Whenever element is required and is not on page, wait for n seconds to find it before fail.
+* * `capabilities` - Sets Selenium [desired capabilities](https://github.com/SeleniumHQ/selenium/wiki/DesiredCapabilities). Should be a key-value array.
+* * `connection_timeout` - timeout for opening a connection to remote selenium server (30 seconds by default).
+* * `request_timeout` - timeout for a request to return something from remote selenium server (30 seconds by default).
+* * `pageload_timeout` - amount of time to wait for a page load to complete before throwing an error (default 0 seconds).
+* * `http_proxy` - sets http proxy server url for testing a remote server.
+* * `http_proxy_port` - sets http proxy server port
+* * `ssl_proxy` - sets ssl(https) proxy server url for testing a remote server.
+* * `ssl_proxy_port` - sets ssl(https) proxy server port
+* * `debug_log_entries` - how many selenium entries to print with `debugWebDriverLogs` or on fail (0 by default).
+* * `log_js_errors` - Set to true to include possible JavaScript to HTML report, or set to false (default) to deactivate. This will only work if `debug_log_entries` is set and its value is > 0. Also this will display JS errors as comments only if test fails.
+* * `webdriver_proxy` - sets http proxy to tunnel requests to the remote Selenium WebDriver through
+* * `webdriver_proxy_port` - sets http proxy server port to tunnel requests to the remote Selenium WebDriver through
+*
+* Example (`Acceptance.suite.yml`)
+*
+* ```yaml
+* modules:
+*    enabled:
+*       - WebDriver:
+*          url: 'http://localhost/'
+*          browser: firefox
+*          window_size: 1024x768
+*          capabilities:
+*              unhandledPromptBehaviour: 'accept'
+*              moz:firefoxOptions:
+*                  profile: '~/firefox-profiles/codeception-profile.zip.b64'
+* ```
+*
+* ## Loading Parts from other Modules
+*
+* While all Codeception modules are designed to work stand-alone, it's still possible to load *several* modules at once. To use e.g. the [Asserts module](https://codeception.com/docs/modules/Asserts) in your acceptance tests, just load it like this in your `acceptance.suite.yml`:
+*
+* ```yaml
+* modules:
+*     enabled:
+*         - WebDriver
+*         - Asserts
+* ```
+*
+* However, when loading a framework module (e.g. [Symfony](https://codeception.com/docs/modules/Symfony)) like this, it would lead to a conflict: When you call `$I->amOnPage()`, Codeception wouldn't know if you want to access the page using WebDriver's `amOnPage()`, or Symfony's `amOnPage()`. That's why possibly conflicting modules are separated into "parts". Here's how to load just the "services" part from e.g. Symfony:
+* ```yaml
+* modules:
+*     enabled:
+*         - WebDriver
+*         - Symfony:
+*             part: services
+* ```
+* To find out which parts each module has, look at the "Parts" header on the module's page.
+*
+* ## Usage
+*
+* ### Locating Elements
+*
+* Most methods in this module that operate on a DOM element (e.g. `click`) accept a locator as the first argument,
+* which can be either a string or an array.
+*
+* If the locator is an array, it should have a single element,
+* with the key signifying the locator type (`id`, `name`, `css`, `xpath`, `link`, or `class`)
+* and the value being the locator itself.
+* This is called a "strict" locator.
+* Examples:
+*
+* * `['id' => 'foo']` matches `<div id="foo">`
+* * `['name' => 'foo']` matches `<div name="foo">`
+* * `['css' => 'input[type=input][value=foo]']` matches `<input type="input" value="foo">`
+* * `['xpath' => "//input[@type='submit'][contains(@value, 'foo')]"]` matches `<input type="submit" value="foobar">`
+* * `['link' => 'Click here']` matches `<a href="google.com">Click here</a>`
+* * `['class' => 'foo']` matches `<div class="foo">`
+*
+* Writing good locators can be tricky.
+* The Mozilla team has written an excellent guide titled [Writing reliable locators for Selenium and WebDriver tests](https://blog.mozilla.org/webqa/2013/09/26/writing-reliable-locators-for-selenium-and-webdriver-tests/).
+*
+* If you prefer, you may also pass a string for the locator. This is called a "fuzzy" locator.
+* In this case, Codeception uses a a variety of heuristics (depending on the exact method called) to determine what element you're referring to.
+* For example, here's the heuristic used for the `submitForm` method:
+*
+* 1. Does the locator look like an ID selector (e.g. "#foo")? If so, try to find a form matching that ID.
+* 2. If nothing found, check if locator looks like a CSS selector. If so, run it.
+* 3. If nothing found, check if locator looks like an XPath expression. If so, run it.
+* 4. Throw an `ElementNotFound` exception.
+*
+* Be warned that fuzzy locators can be significantly slower than strict locators.
+* Especially if you use Selenium WebDriver with `wait` (aka implicit wait) option.
+* In the example above if you set `wait` to 5 seconds and use XPath string as fuzzy locator,
+* `submitForm` method will wait for 5 seconds at each step.
+* That means 5 seconds finding the form by ID, another 5 seconds finding by CSS
+* until it finally tries to find the form by XPath).
+* If speed is a concern, it's recommended you stick with explicitly specifying the locator type via the array syntax.
+*
+* ### Get Scenario Metadata
+*
+* You can inject `\Codeception\Scenario` into your test to get information about the current configuration:
+* ```php
+* use Codeception\Scenario;
+*
+* public function myTest(AcceptanceTester $I, Scenario $scenario)
+* {
+*     if ('firefox' === $scenario->current('browser')) {
+*         // ...
+*     }
+* }
+* ```
+* See [Get Scenario Metadata](https://codeception.com/docs/07-AdvancedUsage#Get-Scenario-Metadata) for more information on `$scenario`.
+*
+* ## Public Properties
+*
+* * `webDriver` - instance of `\Facebook\WebDriver\Remote\RemoteWebDriver`. Can be accessed from Helper classes for complex WebDriver interactions.
+*
+* ```php
+* // inside Helper class
+* $this->getModule('WebDriver')->webDriver->getKeyboard()->sendKeys('hello, webdriver');
+* ```
+*
+*/
+class Web_Driver extends Codeception_Module implements Web_Interface, Remote_Interface, Multi_Session_Interface, Session_Snapshot, Screenshot_Saver, Page_Source_Saver, Element_Locator, Conflicts_With_Module, Requires_Package
 {
     /**
      * @var string[]
      */
-    protected array $requiredFields = ['browser', 'url'];
-
-    protected array $config = [
-        'protocol'             => 'http',
-        'host'                 => '127.0.0.1',
-        'port'                 => '4444',
-        'path'                 => '/wd/hub',
-        'start'                => true,
-        'restart'              => false,
-        'wait'                 => 0,
-        'clear_cookies'        => true,
-        'window_size'          => false,
-        'capabilities'         => [],
-        'connection_timeout'   => null,
-        'request_timeout'      => null,
-        'pageload_timeout'     => null,
-        'http_proxy'           => null,
-        'http_proxy_port'      => null,
-        'ssl_proxy'            => null,
-        'ssl_proxy_port'       => null,
-        'debug_log_entries'    => 0,
-        'log_js_errors'        => false,
-        'webdriver_proxy'      => null,
-        'webdriver_proxy_port' => null,
-    ];
-
-    protected ?string $wdHost = null;
-
+    protected array $required_fields = ['browser', 'url'];
+    protected array $config = ['protocol' => 'http', 'host' => '127.0.0.1', 'port' => '4444', 'path' => '/wd/hub', 'start' => true, 'restart' => false, 'wait' => 0, 'clear_cookies' => true, 'window_size' => false, 'capabilities' => [], 'connection_timeout' => null, 'request_timeout' => null, 'pageload_timeout' => null, 'http_proxy' => null, 'http_proxy_port' => null, 'ssl_proxy' => null, 'ssl_proxy_port' => null, 'debug_log_entries' => 0, 'log_js_errors' => false, 'webdriver_proxy' => null, 'webdriver_proxy_port' => null];
+    protected ?string $wd_host = null;
     /**
      * @var mixed
      */
     protected $capabilities;
-
     /**
      * @var float|int|null
      */
-    protected $connectionTimeoutInMs;
-
+    protected $connection_timeout_in_ms;
     /**
      * @var float|int|null
      */
-    protected $requestTimeoutInMs;
-
+    protected $request_timeout_in_ms;
     protected array $sessions = [];
-
-    protected array $sessionSnapshots = [];
-
+    protected array $session_snapshots = [];
     /**
      * @var mixed
      */
-    protected $webdriverProxy;
-
+    protected $webdriver_proxy;
     /**
      * @var mixed
      */
-    protected $webdriverProxyPort;
-
-    public ?RemoteWebDriver $webDriver = null;
-
-    protected ?WebDriverSearchContext $baseElement = null;
-
+    protected $webdriver_proxy_port;
+    public ?Remote_Web_Driver $web_driver = null;
+    protected ?Web_Driver_Search_Context $base_element = null;
     public function _requires(): array
     {
-        return [RemoteWebDriver::class => '"php-webdriver/webdriver": "^1.0.1"'];
+        return [Remote_Web_Driver::class => '"php-webdriver/webdriver": "^1.0.1"'];
     }
-
     /**
      * @throws ModuleException
      */
-    protected function getBaseElement(): WebDriverSearchContext
+    protected function get_base_element(): Web_Driver_Search_Context
     {
-        if (!$this->baseElement) {
-            throw new ModuleException(
-                $this,
-                'Page not loaded. Use `$I->amOnPage` (or hidden API methods `_request` and `_loadPage`) to open it'
-            );
+        if (!$this->base_element) {
+            throw new Module_Exception($this, 'Page not loaded. Use `$I->amOnPage` (or hidden API methods `_request` and `_loadPage`) to open it');
         }
-
-        return $this->baseElement;
+        return $this->base_element;
     }
-
     public function _initialize(): void
     {
-        $this->wdHost = sprintf(
-            '%s://%s:%s%s',
-            $this->config['protocol'],
-            $this->config['host'],
-            $this->config['port'],
-            $this->config['path']
-        );
+        $this->wd_host = sprintf('%s://%s:%s%s', $this->config['protocol'], $this->config['host'], $this->config['port'], $this->config['path']);
         $this->capabilities = $this->config['capabilities'];
-        $this->capabilities[WebDriverCapabilityType::BROWSER_NAME] = $this->config['browser'];
-        if ($proxy = $this->getProxy()) {
-            $this->capabilities[WebDriverCapabilityType::PROXY] = $proxy;
+        $this->capabilities[Web_Driver_Capability_Type::BROWSER_NAME] = $this->config['browser'];
+        if ($proxy = $this->get_proxy()) {
+            $this->capabilities[Web_Driver_Capability_Type::PROXY] = $proxy;
         }
-
-        $this->connectionTimeoutInMs = $this->config['connection_timeout'] * 1000;
-        $this->requestTimeoutInMs = $this->config['request_timeout'] * 1000;
-        $this->webdriverProxy = $this->config['webdriver_proxy'];
-        $this->webdriverProxyPort = $this->config['webdriver_proxy_port'];
-        $this->loadFirefoxProfile();
+        $this->connection_timeout_in_ms = $this->config['connection_timeout'] * 1000;
+        $this->request_timeout_in_ms = $this->config['request_timeout'] * 1000;
+        $this->webdriver_proxy = $this->config['webdriver_proxy'];
+        $this->webdriver_proxy_port = $this->config['webdriver_proxy_port'];
+        $this->load_firefox_profile();
     }
-
     /**
      * Change capabilities of WebDriver. Should be executed before starting a new browser session.
      * This method expects a function to be passed which returns array or [WebDriver Desired Capabilities](https://github.com/php-webdriver/php-webdriver/blob/main/lib/Remote/DesiredCapabilities.php) object.
@@ -538,32 +479,22 @@ class WebDriver extends CodeceptionModule implements
      *
      * @api
      */
-    public function _capabilities(Closure $capabilityFunction): void
+    public function _capabilities(Closure $capability_function): void
     {
-        $this->capabilities = $capabilityFunction($this->capabilities);
+        $this->capabilities = $capability_function($this->capabilities);
     }
-
     public function _conflicts(): string
     {
-        return WebInterface::class;
+        return Web_Interface::class;
     }
-
-    public function _before(TestInterface $test): void
+    public function _before(Test_Interface $test): void
     {
-        if ($this->webDriver === null && $this->config['start']) {
-            $this->_initializeSession();
+        if ($this->web_driver === null && $this->config['start']) {
+            $this->_initialize_session();
         }
-
-        $this->setBaseElement();
-
-        $test->getMetadata()->setCurrent(
-            [
-                'browser'      => $this->webDriver->getCapabilities()->getBrowserName(),
-                'capabilities' => $this->webDriver->getCapabilities()->toArray(),
-            ]
-        );
+        $this->set_base_element();
+        $test->get_metadata()->set_current(['browser' => $this->web_driver->get_capabilities()->get_browser_name(), 'capabilities' => $this->web_driver->get_capabilities()->to_array()]);
     }
-
     /**
      * Restarts a web browser.
      * Can be used with `_reconfigure` to open browser with different configuration
@@ -579,204 +510,159 @@ class WebDriver extends CodeceptionModule implements
      */
     public function _restart(array $config = []): void
     {
-        $this->webDriver->quit();
+        $this->web_driver->quit();
         if (!empty($config)) {
             $this->_reconfigure($config);
         }
-
-        $this->_initializeSession();
+        $this->_initialize_session();
     }
-
-    protected function onReconfigure()
+    protected function on_reconfigure()
     {
         $this->_initialize();
     }
-
-    protected function loadFirefoxProfile(): void
+    protected function load_firefox_profile(): void
     {
         if (!array_key_exists('firefox_profile', $this->config['capabilities'])) {
             return;
         }
-
         $firefox_profile = $this->config['capabilities']['firefox_profile'];
         if (!file_exists($firefox_profile)) {
-            throw new ModuleConfigException(
-                self::class,
-                'Firefox profile does not exist under given path ' . $firefox_profile
-            );
+            throw new Module_Config_Exception(self::class, 'Firefox profile does not exist under given path ' . $firefox_profile);
         }
-
         // Set firefox profile as capability
         $this->capabilities['firefox_profile'] = file_get_contents($firefox_profile);
     }
-
-    protected function initialWindowSize(): void
+    protected function initial_window_size(): void
     {
         if ($this->config['window_size'] == 'maximize') {
-            $this->maximizeWindow();
+            $this->maximize_window();
             return;
         }
-
         $size = explode('x', (string) $this->config['window_size']);
         if (count($size) == 2) {
-            $this->resizeWindow((int) $size[0], (int) $size[1]);
+            $this->resize_window((int) $size[0], (int) $size[1]);
         }
     }
-
-    public function _after(TestInterface $test): void
+    public function _after(Test_Interface $test): void
     {
         if ($this->config['restart']) {
-            $this->stopAllSessions();
+            $this->stop_all_sessions();
             return;
         }
-
-        if ($this->config['clear_cookies'] && $this->webDriver !== null) {
+        if ($this->config['clear_cookies'] && $this->web_driver !== null) {
             try {
-                $this->webDriver->manage()->deleteAllCookies();
+                $this->web_driver->manage()->delete_all_cookies();
             } catch (Exception $exception) {
                 // may cause fatal errors when not handled
-                $this->debug("Error, can't clean cookies after a test: " . $exception->getMessage());
+                $this->debug("Error, can't clean cookies after a test: " . $exception->get_message());
             }
         }
     }
-
-    public function _failed(TestInterface $test, $fail): void
+    public function _failed(Test_Interface $test, $fail): void
     {
-        if (!$test instanceof SelfDescribing) {
+        if (!$test instanceof Self_Describing) {
             // this exception should never been throw because all existing test types implement SelfDescribing
             throw new InvalidArgumentException('Test class does not implement SelfDescribing interface');
         }
-        $this->debugWebDriverLogs($test);
-        $filename = preg_replace('#[^a-zA-Z0-9\x80-\xff]#', '.', Descriptor::getTestSignatureUnique($test));
-        $outputDir = codecept_output_dir();
-        $this->_saveScreenshot($report = $outputDir . mb_strcut($filename, 0, 245, 'utf-8') . '.fail.png');
-        $test->getMetadata()->addReport('png', $report);
-        $this->_savePageSource($report = $outputDir . mb_strcut($filename, 0, 244, 'utf-8') . '.fail.html');
-        $test->getMetadata()->addReport('html', $report);
-        $this->debug("Screenshot and page source were saved into '{$outputDir}' dir");
+        $this->debug_web_driver_logs($test);
+        $filename = preg_replace('#[^a-zA-Z0-9\x80-\xff]#', '.', Descriptor::get_test_signature_unique($test));
+        $output_dir = codecept_output_dir();
+        $this->_save_screenshot($report = $output_dir . mb_strcut($filename, 0, 245, 'utf-8') . '.fail.png');
+        $test->get_metadata()->add_report('png', $report);
+        $this->_save_page_source($report = $output_dir . mb_strcut($filename, 0, 244, 'utf-8') . '.fail.html');
+        $test->get_metadata()->add_report('html', $report);
+        $this->debug("Screenshot and page source were saved into '{$output_dir}' dir");
     }
-
     /**
      * Print out latest Selenium Logs in debug mode
      */
-    public function debugWebDriverLogs(?TestInterface $test = null): void
+    public function debug_web_driver_logs(?Test_Interface $test = null): void
     {
-        if ($this->webDriver === null) {
+        if ($this->web_driver === null) {
             $this->debug('WebDriver::debugWebDriverLogs method has been called when webDriver is not set');
             return;
         }
-
         // don't show logs if log entries not set
         if (!$this->config['debug_log_entries']) {
             return;
         }
-
         try {
             // Dump out latest Selenium logs
-            $logs = $this->webDriver->manage()->getAvailableLogTypes();
-            foreach ($logs as $logType) {
-                $logEntries = array_slice(
-                    $this->webDriver->manage()->getLog($logType),
-                    -$this->config['debug_log_entries']
-                );
-
-                if (empty($logEntries)) {
-                    $this->debugSection("Selenium {$logType} Logs", ' EMPTY ');
+            $logs = $this->web_driver->manage()->get_available_log_types();
+            foreach ($logs as $log_type) {
+                $log_entries = array_slice($this->web_driver->manage()->get_log($log_type), -$this->config['debug_log_entries']);
+                if (empty($log_entries)) {
+                    $this->debug_section("Selenium {$log_type} Logs", ' EMPTY ');
                     continue;
                 }
-
-                $this->debugSection("Selenium {$logType} Logs", "\n" . $this->formatLogEntries($logEntries));
-
-                if (
-                    $logType === 'browser' && $this->config['log_js_errors']
-                    && ($test instanceof ScenarioDriven)
-                ) {
-                    $this->logJSErrors($test, $logEntries);
+                $this->debug_section("Selenium {$log_type} Logs", "\n" . $this->format_log_entries($log_entries));
+                if ($log_type === 'browser' && $this->config['log_js_errors'] && $test instanceof Scenario_Driven) {
+                    $this->log_js_errors($test, $log_entries);
                 }
             }
         } catch (Exception $e) {
-            $this->debug('Unable to retrieve Selenium logs : ' . $e->getMessage());
+            $this->debug('Unable to retrieve Selenium logs : ' . $e->get_message());
         }
     }
-
     /**
      * Turns an array of log entries into a human-readable string.
      * Each log entry is an array with the keys "timestamp", "level", and "message".
      * See https://code.google.com/p/selenium/wiki/JsonWireProtocol#Log_Entry_JSON_Object
      */
-    protected function formatLogEntries(array $logEntries): string
+    protected function format_log_entries(array $log_entries): string
     {
-        $formattedLogs = '';
-
-        foreach ($logEntries as $logEntry) {
+        $formatted_logs = '';
+        foreach ($log_entries as $log_entry) {
             // Timestamp is in milliseconds, but date() requires seconds.
-            $time = date('H:i:s', intval($logEntry['timestamp'] / 1000)) .
-                // Append the milliseconds to the end of the time string
-                '.' . ($logEntry['timestamp'] % 1000);
-            $formattedLogs .= "{$time} {$logEntry['level']} - {$logEntry['message']}\n";
+            $time = date('H:i:s', intval($log_entry['timestamp'] / 1000)) . '.' . $log_entry['timestamp'] % 1000;
+            $formatted_logs .= "{$time} {$log_entry['level']} - {$log_entry['message']}\n";
         }
-
-        return $formattedLogs;
+        return $formatted_logs;
     }
-
     /**
      * Logs JavaScript errors as comments.
      */
-    protected function logJSErrors(ScenarioDriven $test, array $browserLogEntries): void
+    protected function log_js_errors(Scenario_Driven $test, array $browser_log_entries): void
     {
-        foreach ($browserLogEntries as $logEntry) {
-            if (
-                isset($logEntry['level'])
-                && isset($logEntry['message'])
-                && $this->isJSError($logEntry['level'], $logEntry['message'])
-            ) {
+        foreach ($browser_log_entries as $log_entry) {
+            if (isset($log_entry['level']) && isset($log_entry['message']) && $this->is_js_error($log_entry['level'], $log_entry['message'])) {
                 // Timestamp is in milliseconds, but date() requires seconds.
-                $time = date('H:i:s', intval($logEntry['timestamp'] / 1000)) .
-                    // Append the milliseconds to the end of the time string
-                    '.' . ($logEntry['timestamp'] % 1000);
-                $test->getScenario()->comment("{$time} {$logEntry['level']} - {$logEntry['message']}");
+                $time = date('H:i:s', intval($log_entry['timestamp'] / 1000)) . '.' . $log_entry['timestamp'] % 1000;
+                $test->get_scenario()->comment("{$time} {$log_entry['level']} - {$log_entry['message']}");
             }
         }
     }
-
     /**
      * Determines if the log entry is an error.
      * The decision is made depending on browser and log-level.
      */
-    protected function isJSError(string $logEntryLevel, string $message): bool
+    protected function is_js_error(string $log_entry_level, string $message): bool
     {
-        return
-            (
-                ($this->isPhantom() && $logEntryLevel != 'INFO')          // phantomjs logs errors as "WARNING"
-                || $logEntryLevel === 'SEVERE'                            // other browsers log errors as "SEVERE"
-            )
-            && !str_contains($message, 'ERR_PROXY_CONNECTION_FAILED');  // ignore blackhole proxy
+        return ($this->is_phantom() && $log_entry_level != 'INFO' || $log_entry_level === 'SEVERE') && !str_contains($message, 'ERR_PROXY_CONNECTION_FAILED');
+        // ignore blackhole proxy
     }
-
-    public function _afterSuite(): void
+    public function _after_suite(): void
     {
         // this is just to make sure webDriver is cleared after suite
-        $this->stopAllSessions();
+        $this->stop_all_sessions();
     }
-
-    protected function stopAllSessions(): void
+    protected function stop_all_sessions(): void
     {
         foreach ($this->sessions as $session) {
-            $this->_closeSession($session);
+            $this->_close_session($session);
         }
-
-        $this->webDriver = null;
-        $this->baseElement = null;
+        $this->web_driver = null;
+        $this->base_element = null;
     }
-
-    public function amOnSubdomain(string $subdomain): void
+    public function am_on_subdomain(string $subdomain): void
     {
         $url = $this->config['url'];
-        $url = preg_replace('#(https?://)(.*\.)(.*\.)#', '$1$3', (string) $url); // removing current subdomain
-        $url = preg_replace('#(https?://)(.*)#', sprintf('$1%s.$2', $subdomain), $url); // inserting new
+        $url = preg_replace('#(https?://)(.*\.)(.*\.)#', '$1$3', (string) $url);
+        // removing current subdomain
+        $url = preg_replace('#(https?://)(.*)#', sprintf('$1%s.$2', $subdomain), $url);
+        // inserting new
         $this->_reconfigure(['url' => $url]);
     }
-
     /**
      * Returns URL of a host.
      *
@@ -784,113 +670,95 @@ class WebDriver extends CodeceptionModule implements
      * @return mixed
      * @throws ModuleConfigException
      */
-    public function _getUrl()
+    public function _get_url()
     {
         if (!isset($this->config['url'])) {
-            throw new ModuleConfigException(
-                self::class,
-                "Module connection failure. The URL for client can't bre retrieved"
-            );
+            throw new Module_Config_Exception(self::class, "Module connection failure. The URL for client can't bre retrieved");
         }
-
         return $this->config['url'];
     }
-
-    protected function getProxy(): ?array
+    protected function get_proxy(): ?array
     {
-        $proxyConfig = [];
+        $proxy_config = [];
         if ($this->config['http_proxy']) {
-            $proxyConfig['httpProxy'] = $this->config['http_proxy'];
+            $proxy_config['httpProxy'] = $this->config['http_proxy'];
             if ($this->config['http_proxy_port']) {
-                $proxyConfig['httpProxy'] .= ':' . $this->config['http_proxy_port'];
+                $proxy_config['httpProxy'] .= ':' . $this->config['http_proxy_port'];
             }
         }
-
         if ($this->config['ssl_proxy']) {
-            $proxyConfig['sslProxy'] = $this->config['ssl_proxy'];
+            $proxy_config['sslProxy'] = $this->config['ssl_proxy'];
             if ($this->config['ssl_proxy_port']) {
-                $proxyConfig['sslProxy'] .= ':' . $this->config['ssl_proxy_port'];
+                $proxy_config['sslProxy'] .= ':' . $this->config['ssl_proxy_port'];
             }
         }
-
-        if (!empty($proxyConfig)) {
-            $proxyConfig['proxyType'] = 'manual';
-            return $proxyConfig;
+        if (!empty($proxy_config)) {
+            $proxy_config['proxyType'] = 'manual';
+            return $proxy_config;
         }
-
         return null;
     }
-
     /**
      * Uri of currently opened page.
      * @api
      * @throws ModuleException
      */
-    public function _getCurrentUri(): string
+    public function _get_current_uri(): string
     {
-        $url = $this->webDriver->getCurrentURL();
+        $url = $this->web_driver->get_current_url();
         if ($url == 'about:blank' || str_starts_with($url, 'data:')) {
-            throw new ModuleException($this, 'Current url is blank, no page was opened');
+            throw new Module_Exception($this, 'Current url is blank, no page was opened');
         }
-
-        return Uri::retrieveUri($url);
+        return Uri::retrieve_uri($url);
     }
-
-    public function _saveScreenshot(string $filename): void
+    public function _save_screenshot(string $filename): void
     {
-        if ($this->webDriver === null) {
+        if ($this->web_driver === null) {
             $this->debug('WebDriver::_saveScreenshot method has been called when webDriver is not set');
             return;
         }
-
         try {
-            $this->webDriver->takeScreenshot($filename);
+            $this->web_driver->take_screenshot($filename);
         } catch (Exception $e) {
-            $this->debug('Unable to retrieve screenshot from Selenium : ' . $e->getMessage());
+            $this->debug('Unable to retrieve screenshot from Selenium : ' . $e->get_message());
             return;
         }
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      */
-    public function _saveElementScreenshot($selector, string $filename): void
+    public function _save_element_screenshot($selector, string $filename): void
     {
-        if ($this->webDriver === null) {
+        if ($this->web_driver === null) {
             $this->debug('WebDriver::_saveElementScreenshot method has been called when webDriver is not set');
             return;
         }
-
         try {
-            $this->matchFirstOrFail($this->webDriver, $selector)->takeElementScreenshot($filename);
+            $this->match_first_or_fail($this->web_driver, $selector)->take_element_screenshot($filename);
         } catch (Exception $e) {
-            $this->debug('Unable to retrieve element screenshot from Selenium : ' . $e->getMessage());
+            $this->debug('Unable to retrieve element screenshot from Selenium : ' . $e->get_message());
             return;
         }
     }
-
-    public function _findElements($locator): array
+    public function _find_elements($locator): array
     {
-        return $this->match($this->webDriver, $locator);
+        return $this->match($this->web_driver, $locator);
     }
-
     /**
      * Saves HTML source of a page to a file
      */
-    public function _savePageSource(string $filename): void
+    public function _save_page_source(string $filename): void
     {
-        if ($this->webDriver === null) {
+        if ($this->web_driver === null) {
             $this->debug('WebDriver::_savePageSource method has been called when webDriver is not set');
             return;
         }
-
         try {
-            file_put_contents($filename, $this->webDriver->getPageSource());
+            file_put_contents($filename, $this->web_driver->get_page_source());
         } catch (Exception $e) {
-            $this->debug('Unable to retrieve source page from Selenium : ' . $e->getMessage());
+            $this->debug('Unable to retrieve source page from Selenium : ' . $e->get_message());
         }
     }
-
     /**
      * Takes a screenshot of the current window and saves it to `tests/_output/debug`.
      *
@@ -903,22 +771,19 @@ class WebDriver extends CodeceptionModule implements
      * // saved to: tests/_output/debug/2017-05-26_14-24-11_4b3403665fea6.png
      * ```
      */
-    public function makeScreenshot(?string $name = null): void
+    public function make_screenshot(?string $name = null): void
     {
         if (empty($name)) {
             $name = uniqid(date('Y-m-d_H-i-s_'));
         }
-
-        $debugDir = codecept_log_dir() . 'debug';
-        if (!is_dir($debugDir)) {
-            mkdir($debugDir);
+        $debug_dir = codecept_log_dir() . 'debug';
+        if (!is_dir($debug_dir)) {
+            mkdir($debug_dir);
         }
-
-        $screenName = $debugDir . DIRECTORY_SEPARATOR . $name . '.png';
-        $this->_saveScreenshot($screenName);
-        $this->debugSection('Screenshot Saved', "file://{$screenName}");
+        $screen_name = $debug_dir . DIRECTORY_SEPARATOR . $name . '.png';
+        $this->_save_screenshot($screen_name);
+        $this->debug_section('Screenshot Saved', "file://{$screen_name}");
     }
-
     /**
      * Takes a screenshot of an element of the current window and saves it to `tests/_output/debug`.
      *
@@ -933,39 +798,32 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param WebDriverBy|array $selector
      */
-    public function makeElementScreenshot($selector, ?string $name = null): void
+    public function make_element_screenshot($selector, ?string $name = null): void
     {
         if (empty($name)) {
             $name = uniqid(date('Y-m-d_H-i-s_'));
         }
-
-        $debugDir = codecept_log_dir() . 'debug';
-        if (!is_dir($debugDir)) {
-            mkdir($debugDir);
+        $debug_dir = codecept_log_dir() . 'debug';
+        if (!is_dir($debug_dir)) {
+            mkdir($debug_dir);
         }
-
-        $screenName = $debugDir . DIRECTORY_SEPARATOR . $name . '.png';
-        $this->_saveElementScreenshot($selector, $screenName);
-        $this->debugSection('Screenshot Saved', "file://{$screenName}");
+        $screen_name = $debug_dir . DIRECTORY_SEPARATOR . $name . '.png';
+        $this->_save_element_screenshot($selector, $screen_name);
+        $this->debug_section('Screenshot Saved', "file://{$screen_name}");
     }
-
-    public function makeHtmlSnapshot(?string $name = null): void
+    public function make_html_snapshot(?string $name = null): void
     {
         if (empty($name)) {
             $name = uniqid(date('Y-m-d_H-i-s_'));
         }
-
-        $debugDir = codecept_output_dir() . 'debug';
-        if (!is_dir($debugDir)) {
-            mkdir($debugDir);
+        $debug_dir = codecept_output_dir() . 'debug';
+        if (!is_dir($debug_dir)) {
+            mkdir($debug_dir);
         }
-
-        $fileName = $debugDir . DIRECTORY_SEPARATOR . $name . '.html';
-
-        $this->_savePageSource($fileName);
-        $this->debugSection('Snapshot Saved', "file://{$fileName}");
+        $file_name = $debug_dir . DIRECTORY_SEPARATOR . $name . '.html';
+        $this->_save_page_source($file_name);
+        $this->debug_section('Snapshot Saved', "file://{$file_name}");
     }
-
     /**
      * Resize the current window.
      *
@@ -975,178 +833,142 @@ class WebDriver extends CodeceptionModule implements
      *
      * ```
      */
-    public function resizeWindow(int $width, int $height): void
+    public function resize_window(int $width, int $height): void
     {
-        $this->webDriver->manage()->window()->setSize(new WebDriverDimension($width, $height));
+        $this->web_driver->manage()->window()->set_size(new Web_Driver_Dimension($width, $height));
     }
-
-    private function debugCookies(): void
+    private function debug_cookies(): void
     {
         $result = [];
-        $cookies = $this->webDriver->manage()->getCookies();
+        $cookies = $this->web_driver->manage()->get_cookies();
         foreach ($cookies as $cookie) {
-            $result[] = $cookie->toArray();
+            $result[] = $cookie->to_array();
         }
-
-        $this->debugSection('Cookies', json_encode($result, JSON_THROW_ON_ERROR));
+        $this->debug_section('Cookies', json_encode($result, JSON_THROW_ON_ERROR));
     }
-
-    public function seeCookie($cookie, array $params = [], bool $showDebug = true): void
+    public function see_cookie($cookie, array $params = [], bool $show_debug = true): void
     {
-        $cookies = $this->filterCookies($this->webDriver->manage()->getCookies(), $params);
-        $cookies = array_map(
-            fn (\Facebook\WebDriver\Cookie $c) => $c['name'],
-            $cookies
-        );
-        if ($showDebug) {
-            $this->debugCookies();
+        $cookies = $this->filter_cookies($this->web_driver->manage()->get_cookies(), $params);
+        $cookies = array_map(fn(\Facebook\Web_Driver\Cookie $c) => $c['name'], $cookies);
+        if ($show_debug) {
+            $this->debug_cookies();
         }
-        $this->assertContains($cookie, $cookies);
+        $this->assert_contains($cookie, $cookies);
     }
-
-    public function dontSeeCookie($cookie, array $params = [], bool $showDebug = true): void
+    public function dont_see_cookie($cookie, array $params = [], bool $show_debug = true): void
     {
-        $cookies = $this->filterCookies($this->webDriver->manage()->getCookies(), $params);
-        $cookies = array_map(
-            fn (\Facebook\WebDriver\Cookie $c) => $c['name'],
-            $cookies
-        );
-        if ($showDebug) {
-            $this->debugCookies();
+        $cookies = $this->filter_cookies($this->web_driver->manage()->get_cookies(), $params);
+        $cookies = array_map(fn(\Facebook\Web_Driver\Cookie $c) => $c['name'], $cookies);
+        if ($show_debug) {
+            $this->debug_cookies();
         }
-        $this->assertNotContains($cookie, $cookies);
+        $this->assert_not_contains($cookie, $cookies);
     }
-
-    public function setCookie($name, $value, array $params = [], $showDebug = true): void
+    public function set_cookie($name, $value, array $params = [], $show_debug = true): void
     {
         $params['name'] = $name;
         $params['value'] = $value;
-        if (isset($params['expires'])) { // PhpBrowser compatibility
+        if (isset($params['expires'])) {
+            // PhpBrowser compatibility
             $params['expiry'] = $params['expires'];
         }
-
         // #5401 Supply defaults, otherwise chromedriver 2.46 complains.
-        $defaults = [
-            'path' => '/',
-            'expiry' => time() + 86400,
-            'secure' => false,
-            'httpOnly' => false,
-        ];
+        $defaults = ['path' => '/', 'expiry' => time() + 86400, 'secure' => false, 'httpOnly' => false];
         foreach ($defaults as $key => $default) {
             if (empty($params[$key])) {
                 $params[$key] = $default;
             }
         }
-
-        $this->webDriver->manage()->addCookie($params);
-        if ($showDebug) {
-            $this->debugCookies();
+        $this->web_driver->manage()->add_cookie($params);
+        if ($show_debug) {
+            $this->debug_cookies();
         }
     }
-
-    public function resetCookie($cookie, array $params = [], bool $showDebug = true): void
+    public function reset_cookie($cookie, array $params = [], bool $show_debug = true): void
     {
-        $this->webDriver->manage()->deleteCookieNamed($cookie);
-        if ($showDebug) {
-            $this->debugCookies();
+        $this->web_driver->manage()->delete_cookie_named($cookie);
+        if ($show_debug) {
+            $this->debug_cookies();
         }
     }
-
-    public function grabCookie($cookie, array $params = []): mixed
+    public function grab_cookie($cookie, array $params = []): mixed
     {
         $params['name'] = $cookie;
-        $cookies = $this->filterCookies($this->webDriver->manage()->getCookies(), $params);
+        $cookies = $this->filter_cookies($this->web_driver->manage()->get_cookies(), $params);
         if (empty($cookies)) {
             return null;
         }
-
         $cookie = reset($cookies);
         return $cookie['value'];
     }
-
     /**
      * Grabs current page source code.
      *
      * @throws ModuleException if no page was opened.
      * @return string Current page source code.
      */
-    public function grabPageSource(): string
+    public function grab_page_source(): string
     {
         // Make sure that some page was opened.
-        $this->_getCurrentUri();
-
-        return $this->webDriver->getPageSource();
+        $this->_get_current_uri();
+        return $this->web_driver->get_page_source();
     }
-
     /**
      * @param Cookie[] $cookies
      * @param array<string, string> $params
      * @return Cookie[]
      */
-    protected function filterCookies(array $cookies, array $params = []): array
+    protected function filter_cookies(array $cookies, array $params = []): array
     {
         foreach (['domain', 'path', 'name'] as $filter) {
             if (!isset($params[$filter])) {
                 continue;
             }
-
-            $cookies = array_filter(
-                $cookies,
-                fn (\Facebook\WebDriver\Cookie $item): bool => $item[$filter] == $params[$filter]
-            );
+            $cookies = array_filter($cookies, fn(\Facebook\Web_Driver\Cookie $item): bool => $item[$filter] == $params[$filter]);
         }
-
         return $cookies;
     }
-
-    public function amOnUrl($url): void
+    public function am_on_url($url): void
     {
-        $host = Uri::retrieveHost($url);
+        $host = Uri::retrieve_host($url);
         $this->_reconfigure(['url' => $host]);
-        $this->debugSection('Host', $host);
-        $this->webDriver->get($url);
+        $this->debug_section('Host', $host);
+        $this->web_driver->get($url);
     }
-
-    public function amOnPage($page): void
+    public function am_on_page($page): void
     {
-        $url = Uri::appendPath($this->config['url'], $page);
-        $this->debugSection('GET', $url);
-        $this->webDriver->get($url);
+        $url = Uri::append_path($this->config['url'], $page);
+        $this->debug_section('GET', $url);
+        $this->web_driver->get($url);
     }
-
     public function see($text, $selector = null): void
     {
         if (!$selector) {
-            $this->assertPageContains($text);
+            $this->assert_page_contains($text);
             return;
         }
-
-        $this->enableImplicitWait();
-        $nodes = $this->matchVisible($selector);
-        $this->disableImplicitWait();
-        $this->assertNodesContain($text, $nodes, $selector);
+        $this->enable_implicit_wait();
+        $nodes = $this->match_visible($selector);
+        $this->disable_implicit_wait();
+        $this->assert_nodes_contain($text, $nodes, $selector);
     }
-
-    public function dontSee($text, $selector = null): void
+    public function dont_see($text, $selector = null): void
     {
         if (!$selector) {
-            $this->assertPageNotContains($text);
+            $this->assert_page_not_contains($text);
         } else {
-            $nodes = $this->matchVisible($selector);
-            $this->assertNodesNotContain($text, $nodes, $selector);
+            $nodes = $this->match_visible($selector);
+            $this->assert_nodes_not_contain($text, $nodes, $selector);
         }
     }
-
-    public function seeInSource($raw): void
+    public function see_in_source($raw): void
     {
-        $this->assertPageSourceContains($raw);
+        $this->assert_page_source_contains($raw);
     }
-
-    public function dontSeeInSource($raw): void
+    public function dont_see_in_source($raw): void
     {
-        $this->assertPageSourceNotContains($raw);
+        $this->assert_page_source_not_contains($raw);
     }
-
     /**
      * Checks that the page source contains the given string.
      *
@@ -1155,53 +977,38 @@ class WebDriver extends CodeceptionModule implements
      * $I->seeInPageSource('<link rel="apple-touch-icon"');
      * ```
      */
-    public function seeInPageSource(string $text): void
+    public function see_in_page_source(string $text): void
     {
-        $this->assertThat(
-            $this->webDriver->getPageSource(),
-            new PageConstraint($text, $this->_getCurrentUri())
-        );
+        $this->assert_that($this->web_driver->get_page_source(), new Page_Constraint($text, $this->_get_current_uri()));
     }
-
     /**
      * Checks that the page source doesn't contain the given string.
      */
-    public function dontSeeInPageSource(string $text): void
+    public function dont_see_in_page_source(string $text): void
     {
-        $this->assertThatItsNot(
-            $this->webDriver->getPageSource(),
-            new PageConstraint($text, $this->_getCurrentUri())
-        );
+        $this->assert_that_its_not($this->web_driver->get_page_source(), new Page_Constraint($text, $this->_get_current_uri()));
     }
-
     public function click($link, $context = null): void
     {
-        $page = $this->webDriver;
+        $page = $this->web_driver;
         if ($context) {
-            $page = $this->matchFirstOrFail($this->webDriver, $context);
+            $page = $this->match_first_or_fail($this->web_driver, $context);
         }
-
-        $el = $this->_findClickable($page, $link);
-        if ($el === null) { // check one more time if this was a CSS selector we didn't match
+        $el = $this->_find_clickable($page, $link);
+        if ($el === null) {
+            // check one more time if this was a CSS selector we didn't match
             try {
                 $els = $this->match($page, $link);
-            } catch (MalformedLocatorException) {
-                throw new ElementNotFound(
-                    "name={$link}",
-                    "'{$link}' is invalid CSS and XPath selector and Link or Button"
-                );
+            } catch (Malformed_Locator_Exception) {
+                throw new Element_Not_Found("name={$link}", "'{$link}' is invalid CSS and XPath selector and Link or Button");
             }
-
             $el = reset($els);
         }
-
         if (!$el) {
-            throw new ElementNotFound($link, 'Link or Button or CSS or XPath');
+            throw new Element_Not_Found($link, 'Link or Button or CSS or XPath');
         }
-
         $el->click();
     }
-
     /**
      * Locates a clickable element.
      *
@@ -1224,274 +1031,206 @@ class WebDriver extends CodeceptionModule implements
      * @param string|array|WebDriverBy $link A link text or locator to click
      * @api
      */
-    public function _findClickable(WebDriverSearchContext $page, $link): ?WebDriverElement
+    public function _find_clickable(Web_Driver_Search_Context $page, $link): ?Web_Driver_Element
     {
-        if (is_array($link) || $link instanceof WebDriverBy) {
-            return $this->matchFirstOrFail($page, $link);
+        if (is_array($link) || $link instanceof Web_Driver_By) {
+            return $this->match_first_or_fail($page, $link);
         }
-
         // try to match by strict locators, CSS Ids or XPath
-        if (Locator::isPrecise($link)) {
-            return $this->matchFirstOrFail($page, $link);
+        if (Locator::is_precise($link)) {
+            return $this->match_first_or_fail($page, $link);
         }
-
-        $locator = self::xPathLiteral(trim((string) $link));
-
+        $locator = self::x_path_literal(trim((string) $link));
         // narrow
-        $xpath = Locator::combine(
-            ".//a[normalize-space(.)={$locator}]",
-            ".//button[normalize-space(.)={$locator}]",
-            ".//a/img[normalize-space(@alt)={$locator}]/ancestor::a",
-            ".//input[./@type = 'submit' or ./@type = 'image' or ./@type = 'button'][normalize-space(@value)={$locator}]"
-        );
-
-        $els = $page->findElements(WebDriverBy::xpath($xpath));
+        $xpath = Locator::combine(".//a[normalize-space(.)={$locator}]", ".//button[normalize-space(.)={$locator}]", ".//a/img[normalize-space(@alt)={$locator}]/ancestor::a", ".//input[./@type = 'submit' or ./@type = 'image' or ./@type = 'button'][normalize-space(@value)={$locator}]");
+        $els = $page->find_elements(Web_Driver_By::xpath($xpath));
         if (count($els) > 0) {
             return reset($els);
         }
-
         // wide
-        $xpath = Locator::combine(
-            ".//a[./@href][((contains(normalize-space(string(.)), {$locator})) or contains(./@title, {$locator}) or .//img[contains(./@alt, {$locator})])]",
-            ".//input[./@type = 'submit' or ./@type = 'image' or ./@type = 'button'][contains(./@value, {$locator})]",
-            ".//input[./@type = 'image'][contains(./@alt, {$locator})]",
-            ".//button[contains(normalize-space(string(.)), {$locator})]",
-            ".//input[./@type = 'submit' or ./@type = 'image' or ./@type = 'button'][./@name = {$locator} or ./@title = {$locator}]",
-            ".//button[./@name = {$locator} or ./@title = {$locator}]"
-        );
-        $els = $page->findElements(WebDriverBy::xpath($xpath));
+        $xpath = Locator::combine(".//a[./@href][((contains(normalize-space(string(.)), {$locator})) or contains(./@title, {$locator}) or .//img[contains(./@alt, {$locator})])]", ".//input[./@type = 'submit' or ./@type = 'image' or ./@type = 'button'][contains(./@value, {$locator})]", ".//input[./@type = 'image'][contains(./@alt, {$locator})]", ".//button[contains(normalize-space(string(.)), {$locator})]", ".//input[./@type = 'submit' or ./@type = 'image' or ./@type = 'button'][./@name = {$locator} or ./@title = {$locator}]", ".//button[./@name = {$locator} or ./@title = {$locator}]");
+        $els = $page->find_elements(Web_Driver_By::xpath($xpath));
         if (count($els) > 0) {
             return reset($els);
         }
-
         return null;
     }
-
     /**
      * @param WebDriverElement|WebDriverBy|array|string $selector
      * @return WebDriverElement[]
      * @throws ElementNotFound
      */
-    protected function findFields($selector): array
+    protected function find_fields($selector): array
     {
-        if ($selector instanceof WebDriverElement) {
+        if ($selector instanceof Web_Driver_Element) {
             return [$selector];
         }
-
-        if (is_array($selector) || ($selector instanceof WebDriverBy)) {
-            $fields = $this->match($this->getBaseElement(), $selector);
-
+        if (is_array($selector) || $selector instanceof Web_Driver_By) {
+            $fields = $this->match($this->get_base_element(), $selector);
             if (empty($fields)) {
-                throw new ElementNotFound($selector);
+                throw new Element_Not_Found($selector);
             }
-
             return $fields;
         }
-
-        $locator = self::xPathLiteral(trim((string) $selector));
+        $locator = self::x_path_literal(trim((string) $selector));
         // by text or label
-        $xpath = Locator::combine(
-            ".//*[self::input | self::textarea | self::select][not(./@type = 'submit' or ./@type = 'image' or ./@type = 'hidden')][(((./@name = {$locator}) or ./@id = //label[contains(normalize-space(string(.)), {$locator})]/@for) or ./@placeholder = {$locator})]",
-            ".//label[contains(normalize-space(string(.)), {$locator})]//.//*[self::input | self::textarea | self::select][not(./@type = 'submit' or ./@type = 'image' or ./@type = 'hidden')]"
-        );
-        $fields = $this->getBaseElement()->findElements(WebDriverBy::xpath($xpath));
+        $xpath = Locator::combine(".//*[self::input | self::textarea | self::select][not(./@type = 'submit' or ./@type = 'image' or ./@type = 'hidden')][(((./@name = {$locator}) or ./@id = //label[contains(normalize-space(string(.)), {$locator})]/@for) or ./@placeholder = {$locator})]", ".//label[contains(normalize-space(string(.)), {$locator})]//.//*[self::input | self::textarea | self::select][not(./@type = 'submit' or ./@type = 'image' or ./@type = 'hidden')]");
+        $fields = $this->get_base_element()->find_elements(Web_Driver_By::xpath($xpath));
         if (!empty($fields)) {
             return $fields;
         }
-
         // by name
         $xpath = ".//*[self::input | self::textarea | self::select][@name = {$locator}]";
-        $fields = $this->getBaseElement()->findElements(WebDriverBy::xpath($xpath));
+        $fields = $this->get_base_element()->find_elements(Web_Driver_By::xpath($xpath));
         if (!empty($fields)) {
             return $fields;
         }
-
         // try to match by CSS or XPath
-        $fields = $this->match($this->getBaseElement(), $selector, false);
+        $fields = $this->match($this->get_base_element(), $selector, false);
         if (!empty($fields)) {
             return $fields;
         }
-
-        throw new ElementNotFound($selector, 'Field by name, label, CSS or XPath');
+        throw new Element_Not_Found($selector, 'Field by name, label, CSS or XPath');
     }
-
     /**
      * @param string|array|WebDriverBy|WebDriverElement $selector
      * @throws ElementNotFound
      */
-    protected function findField($selector): WebDriverElement
+    protected function find_field($selector): Web_Driver_Element
     {
-        $arr = $this->findFields($selector);
+        $arr = $this->find_fields($selector);
         return reset($arr);
     }
-
-    public function seeLink(string $text, ?string $url = null): void
+    public function see_link(string $text, ?string $url = null): void
     {
-        $this->enableImplicitWait();
-        $nodes = $this->getBaseElement()->findElements(WebDriverBy::partialLinkText($text));
-        $this->disableImplicitWait();
-        $currentUri = $this->_getCurrentUri();
-
+        $this->enable_implicit_wait();
+        $nodes = $this->get_base_element()->find_elements(Web_Driver_By::partial_link_text($text));
+        $this->disable_implicit_wait();
+        $current_uri = $this->_get_current_uri();
         if (empty($nodes)) {
-            $this->fail("No links containing text '{$text}' were found in page {$currentUri}");
+            $this->fail("No links containing text '{$text}' were found in page {$current_uri}");
         }
-
         if ($url) {
-            $nodes = $this->filterNodesByHref($url, $nodes);
+            $nodes = $this->filter_nodes_by_href($url, $nodes);
         }
-
-        $this->assertNotEmpty(
-            $nodes,
-            "No links containing text '{$text}' and URL '{$url}' were found in page {$currentUri}"
-        );
+        $this->assert_not_empty($nodes, "No links containing text '{$text}' and URL '{$url}' were found in page {$current_uri}");
     }
-
-    public function dontSeeLink(string $text, string $url = ''): void
+    public function dont_see_link(string $text, string $url = ''): void
     {
-        $nodes = $this->getBaseElement()->findElements(WebDriverBy::partialLinkText($text));
-        $currentUri = $this->_getCurrentUri();
+        $nodes = $this->get_base_element()->find_elements(Web_Driver_By::partial_link_text($text));
+        $current_uri = $this->_get_current_uri();
         if (!$url) {
-            $this->assertEmpty($nodes, "Link containing text '{$text}' was found in page {$currentUri}");
+            $this->assert_empty($nodes, "Link containing text '{$text}' was found in page {$current_uri}");
         } else {
-            $nodes = $this->filterNodesByHref($url, $nodes);
-            $this->assertEmpty(
-                $nodes,
-                "Link containing text '{$text}' and URL '{$url}' was found in page {$currentUri}"
-            );
+            $nodes = $this->filter_nodes_by_href($url, $nodes);
+            $this->assert_empty($nodes, "Link containing text '{$text}' and URL '{$url}' was found in page {$current_uri}");
         }
     }
-
-    private function filterNodesByHref(string $url, array $nodes): array
+    private function filter_nodes_by_href(string $url, array $nodes): array
     {
         //current uri can be relative, merging it with configured base url gives absolute url
-        $absoluteCurrentUrl = Uri::mergeUrls($this->_getUrl(), $this->_getCurrentUri());
-        $expectedUrl = Uri::mergeUrls($absoluteCurrentUrl, $url);
-        return array_filter(
-            $nodes,
-            function (WebDriverElement $e) use ($expectedUrl, $absoluteCurrentUrl): bool {
-                $elementHref = Uri::mergeUrls($absoluteCurrentUrl, $e->getAttribute('href') ?? '');
-                return $elementHref === $expectedUrl;
-            }
-        );
+        $absolute_current_url = Uri::merge_urls($this->_get_url(), $this->_get_current_uri());
+        $expected_url = Uri::merge_urls($absolute_current_url, $url);
+        return array_filter($nodes, function (Web_Driver_Element $e) use ($expected_url, $absolute_current_url): bool {
+            $element_href = Uri::merge_urls($absolute_current_url, $e->get_attribute('href') ?? '');
+            return $element_href === $expected_url;
+        });
     }
-
-    public function seeInCurrentUrl(string $uri): void
+    public function see_in_current_url(string $uri): void
     {
-        $this->assertStringContainsString($uri, $this->_getCurrentUri());
+        $this->assert_string_contains_string($uri, $this->_get_current_uri());
     }
-
-    public function seeCurrentUrlEquals(string $uri): void
+    public function see_current_url_equals(string $uri): void
     {
-        $this->assertEquals($uri, $this->_getCurrentUri());
+        $this->assert_equals($uri, $this->_get_current_uri());
     }
-
-    public function seeCurrentUrlMatches(string $uri): void
+    public function see_current_url_matches(string $uri): void
     {
-        $this->assertRegExp($uri, $this->_getCurrentUri());
+        $this->assert_reg_exp($uri, $this->_get_current_uri());
     }
-
-    public function dontSeeInCurrentUrl(string $uri): void
+    public function dont_see_in_current_url(string $uri): void
     {
-        $this->assertStringNotContainsString($uri, $this->_getCurrentUri());
+        $this->assert_string_not_contains_string($uri, $this->_get_current_uri());
     }
-
-    public function dontSeeCurrentUrlEquals(string $uri): void
+    public function dont_see_current_url_equals(string $uri): void
     {
-        $this->assertNotEquals($uri, $this->_getCurrentUri());
+        $this->assert_not_equals($uri, $this->_get_current_uri());
     }
-
-    public function dontSeeCurrentUrlMatches(string $uri): void
+    public function dont_see_current_url_matches(string $uri): void
     {
-        $this->assertNotRegExp($uri, $this->_getCurrentUri());
+        $this->assert_not_reg_exp($uri, $this->_get_current_uri());
     }
-
-    public function grabFromCurrentUrl($uri = null): mixed
+    public function grab_from_current_url($uri = null): mixed
     {
         if (!$uri) {
-            return $this->_getCurrentUri();
+            return $this->_get_current_uri();
         }
-
         $matches = [];
-        $res = preg_match($uri, $this->_getCurrentUri(), $matches);
+        $res = preg_match($uri, $this->_get_current_uri(), $matches);
         if (!$res) {
-            $this->fail("Couldn't match {$uri} in " . $this->_getCurrentUri());
+            $this->fail("Couldn't match {$uri} in " . $this->_get_current_uri());
         }
-
         if (!isset($matches[1])) {
             $this->fail("Nothing to grab. A regex parameter required. Ex: '/user/(\\d+)'");
         }
-
         return $matches[1];
     }
-
-    public function seeCheckboxIsChecked($checkbox): void
+    public function see_checkbox_is_checked($checkbox): void
     {
-        $this->assertTrue($this->findField($checkbox)->isSelected());
+        $this->assert_true($this->find_field($checkbox)->is_selected());
     }
-
-    public function dontSeeCheckboxIsChecked($checkbox): void
+    public function dont_see_checkbox_is_checked($checkbox): void
     {
-        $this->assertFalse($this->findField($checkbox)->isSelected());
+        $this->assert_false($this->find_field($checkbox)->is_selected());
     }
-
-    public function seeInField($field, $value): void
+    public function see_in_field($field, $value): void
     {
-        $els = $this->findFields($field);
-        $this->assert($this->proceedSeeInField($els, $value));
+        $els = $this->find_fields($field);
+        $this->assert($this->proceed_see_in_field($els, $value));
     }
-
-    public function dontSeeInField($field, $value): void
+    public function dont_see_in_field($field, $value): void
     {
-        $els = $this->findFields($field);
-        $this->assertNot($this->proceedSeeInField($els, $value));
+        $els = $this->find_fields($field);
+        $this->assert_not($this->proceed_see_in_field($els, $value));
     }
-
-    public function seeInFormFields($formSelector, array $params): void
+    public function see_in_form_fields($form_selector, array $params): void
     {
-        $this->proceedSeeInFormFields($formSelector, $params, false);
+        $this->proceed_see_in_form_fields($form_selector, $params, false);
     }
-
-    public function dontSeeInFormFields($formSelector, array $params): void
+    public function dont_see_in_form_fields($form_selector, array $params): void
     {
-        $this->proceedSeeInFormFields($formSelector, $params, true);
+        $this->proceed_see_in_form_fields($form_selector, $params, true);
     }
-
     /**
      * @param string|array|WebDriverBy $formSelector
      * @throws ModuleException
      */
-    protected function proceedSeeInFormFields($formSelector, array $params, bool $assertNot)
+    protected function proceed_see_in_form_fields($form_selector, array $params, bool $assert_not)
     {
-        $form = $this->match($this->getBaseElement(), $formSelector);
+        $form = $this->match($this->get_base_element(), $form_selector);
         if (empty($form)) {
-            throw new ElementNotFound($formSelector, 'Form via CSS or XPath');
+            throw new Element_Not_Found($form_selector, 'Form via CSS or XPath');
         }
-
         $form = reset($form);
-
         $els = [];
         foreach ($params as $name => $values) {
-            $this->pushFormField($els, $form, $name, $values);
+            $this->push_form_field($els, $form, $name, $values);
         }
-
-        foreach ($els as $arrayElement) {
-            [$el, $values] = $arrayElement;
-
+        foreach ($els as $array_element) {
+            [$el, $values] = $array_element;
             if (!is_array($values)) {
                 $values = [$values];
             }
-
             foreach ($values as $value) {
-                $ret = $this->proceedSeeInField($el, $value);
-                if ($assertNot) {
-                    $this->assertNot($ret);
+                $ret = $this->proceed_see_in_field($el, $value);
+                if ($assert_not) {
+                    $this->assert_not($ret);
                 } else {
                     $this->assert($ret);
                 }
             }
         }
     }
-
     /**
      * Map an array element passed to seeInFormFields to its corresponding WebDriver element,
      * recursing through array values if the field is not found.
@@ -1501,166 +1240,138 @@ class WebDriver extends CodeceptionModule implements
      * @param string $name The field's name.
      * @param mixed $values
      */
-    protected function pushFormField(array &$els, WebDriverElement $form, string $name, $values): void
+    protected function push_form_field(array &$els, Web_Driver_Element $form, string $name, $values): void
     {
-        $el = $form->findElements(WebDriverBy::name($name));
-
+        $el = $form->find_elements(Web_Driver_By::name($name));
         if ($el !== []) {
             $els[] = [$el, $values];
         } elseif (is_array($values)) {
             foreach ($values as $key => $value) {
-                $this->pushFormField($els, $form, "{$name}[{$key}]", $value);
+                $this->push_form_field($els, $form, "{$name}[{$key}]", $value);
             }
         } else {
-            throw new ElementNotFound($name);
+            throw new Element_Not_Found($name);
         }
     }
-
     /**
      * @param WebDriverElement[] $elements
      * @param mixed $value
      */
-    protected function proceedSeeInField(array $elements, $value): array
+    protected function proceed_see_in_field(array $elements, $value): array
     {
-        $strField = reset($elements)->getAttribute('name');
-        if (reset($elements)->getTagName() === 'select') {
+        $str_field = reset($elements)->get_attribute('name');
+        if (reset($elements)->get_tag_name() === 'select') {
             $el = reset($elements);
-            $elements = $el->findElements(WebDriverBy::xpath('.//option'));
+            $elements = $el->find_elements(Web_Driver_By::xpath('.//option'));
             if (empty($value) && empty($elements)) {
                 return ['True', true];
             }
         }
-
-        $currentValues = [];
+        $current_values = [];
         if (is_bool($value)) {
-            $currentValues = [false];
+            $current_values = [false];
         }
-
         foreach ($elements as $el) {
-            switch ($el->getTagName()) {
+            switch ($el->get_tag_name()) {
                 case 'input':
-                    if ($el->getAttribute('type') === 'radio' || $el->getAttribute('type') === 'checkbox') {
-                        if ($el->getAttribute('checked')) {
+                    if ($el->get_attribute('type') === 'radio' || $el->get_attribute('type') === 'checkbox') {
+                        if ($el->get_attribute('checked')) {
                             if (is_bool($value)) {
-                                $currentValues = [true];
+                                $current_values = [true];
                                 break;
                             } else {
-                                $currentValues[] = $el->getAttribute('value');
+                                $current_values[] = $el->get_attribute('value');
                             }
                         }
                     } else {
-                        $currentValues[] = $el->getAttribute('value');
+                        $current_values[] = $el->get_attribute('value');
                     }
-
                     break;
                 case 'option':
-                    if (!$el->isSelected()) {
+                    if (!$el->is_selected()) {
                         break;
                     }
-
-                    $currentValues[] = $el->getText();
-                    // no break we need the trim text and the value also
+                    $current_values[] = $el->get_text();
+                // no break we need the trim text and the value also
                 case 'textarea':
-                    $currentValues[] = trim((string) $el->getText());
-                    // we include trimmed and real value of textarea for check
-                    // no break
+                    $current_values[] = trim((string) $el->get_text());
+                // we include trimmed and real value of textarea for check
+                // no break
                 default:
-                    $currentValues[] = $el->getAttribute('value'); // raw value
+                    $current_values[] = $el->get_attribute('value');
+                    // raw value
                     break;
             }
         }
-
-        return [
-            'Contains',
-            $value,
-            $currentValues,
-            "Failed testing for '{$value}' in {$strField}'s value: '" . implode("', '", $currentValues) . "'",
-        ];
+        return ['Contains', $value, $current_values, "Failed testing for '{$value}' in {$str_field}'s value: '" . implode("', '", $current_values) . "'"];
     }
-
-    public function selectOption($select, $option): void
+    public function select_option($select, $option): void
     {
-        $el = $this->findField($select);
-        if ($el->getTagName() != 'select') {
-            $els = $this->matchCheckables($select);
+        $el = $this->find_field($select);
+        if ($el->get_tag_name() != 'select') {
+            $els = $this->match_checkables($select);
             $radio = null;
             foreach ($els as $el) {
-                $radio = $this->findCheckable($el, $option, true);
+                $radio = $this->find_checkable($el, $option, true);
                 if ($radio) {
                     break;
                 }
             }
-
             if (!$radio) {
-                throw new ElementNotFound($select, "Radiobutton with value or name '{$option} in");
+                throw new Element_Not_Found($select, "Radiobutton with value or name '{$option} in");
             }
-
             $radio->click();
             return;
         }
-
-        $wdSelect = new WebDriverSelect($el);
-        if ($wdSelect->isMultiple()) {
-            $wdSelect->deselectAll();
+        $wd_select = new Web_Driver_Select($el);
+        if ($wd_select->is_multiple()) {
+            $wd_select->deselect_all();
         }
-
         if (!is_array($option)) {
             $option = [$option];
         }
-
         $matched = false;
-
         if (key($option) !== 'value') {
             foreach ($option as $opt) {
                 try {
-                    $wdSelect->selectByVisibleText($opt);
+                    $wd_select->select_by_visible_text($opt);
                     $matched = true;
-                } catch (NoSuchElementException) {
+                } catch (No_Such_Element_Exception) {
                 }
             }
         }
-
         if ($matched) {
             return;
         }
-
         if (key($option) !== 'text') {
             foreach ($option as $opt) {
                 try {
-                    $wdSelect->selectByValue($opt);
+                    $wd_select->select_by_value($opt);
                     $matched = true;
-                } catch (NoSuchElementException) {
+                } catch (No_Such_Element_Exception) {
                 }
             }
         }
-
         if ($matched) {
             return;
         }
-
         // partially matching
         foreach ($option as $opt) {
             try {
-                $optElement = $el->findElement(WebDriverBy::xpath('.//option [contains (., "' . $opt . '")]'));
+                $opt_element = $el->find_element(Web_Driver_By::xpath('.//option [contains (., "' . $opt . '")]'));
                 $matched = true;
-                if (!$optElement->isSelected()) {
-                    $optElement->click();
+                if (!$opt_element->is_selected()) {
+                    $opt_element->click();
                 }
-            } catch (NoSuchElementException) {
+            } catch (No_Such_Element_Exception) {
                 // exception treated at the end
             }
         }
-
         if ($matched) {
             return;
         }
-
-        throw new ElementNotFound(
-            json_encode($option, JSON_THROW_ON_ERROR),
-            "Option inside {$select} matched by name or value"
-        );
+        throw new Element_Not_Found(json_encode($option, JSON_THROW_ON_ERROR), "Option inside {$select} matched by name or value");
     }
-
     /**
      * Manually starts a new browser session.
      *
@@ -1671,55 +1382,41 @@ class WebDriver extends CodeceptionModule implements
      *
      * @api
      */
-    public function _initializeSession(): void
+    public function _initialize_session(): void
     {
         try {
-            $this->sessions[] = $this->webDriver;
-            $this->webDriver = RemoteWebDriver::create(
-                $this->wdHost,
-                $this->capabilities,
-                $this->connectionTimeoutInMs,
-                $this->requestTimeoutInMs,
-                $this->webdriverProxy,
-                $this->webdriverProxyPort
-            );
+            $this->sessions[] = $this->web_driver;
+            $this->web_driver = Remote_Web_Driver::create($this->wd_host, $this->capabilities, $this->connection_timeout_in_ms, $this->request_timeout_in_ms, $this->webdriver_proxy, $this->webdriver_proxy_port);
             if (!is_null($this->config['pageload_timeout'])) {
-                $this->webDriver->manage()->timeouts()->pageLoadTimeout($this->config['pageload_timeout']);
+                $this->web_driver->manage()->timeouts()->page_load_timeout($this->config['pageload_timeout']);
             }
-
-            $this->setBaseElement();
-            $this->initialWindowSize();
-        } catch (UnexpectedResponseException $exception) {
-            codecept_debug('Curl error: ' . $exception->getMessage());
-            throw new ConnectionException(
-                "Can't connect to WebDriver at {$this->wdHost}."
-                . ' Make sure that ChromeDriver, GeckoDriver or Selenium Server is running.'
-            );
+            $this->set_base_element();
+            $this->initial_window_size();
+        } catch (Unexpected_Response_Exception $exception) {
+            codecept_debug('Curl error: ' . $exception->get_message());
+            throw new Connection_Exception("Can't connect to WebDriver at {$this->wd_host}." . ' Make sure that ChromeDriver, GeckoDriver or Selenium Server is running.');
         }
     }
-
     /**
      * Loads current RemoteWebDriver instance as a session
      *
      * @param RemoteWebDriver $session
      * @api
      */
-    public function _loadSession($session): void
+    public function _load_session($session): void
     {
-        $this->webDriver = $session;
-        $this->setBaseElement();
+        $this->web_driver = $session;
+        $this->set_base_element();
     }
-
     /**
      * Returns current WebDriver session for saving
      *
      * @api
      */
-    public function _backupSession(): WebDriverInterface
+    public function _backup_session(): Web_Driver_Interface
     {
-        return $this->webDriver;
+        return $this->web_driver;
     }
-
     /**
      * Manually closes current WebDriver session.
      *
@@ -1735,178 +1432,138 @@ class WebDriver extends CodeceptionModule implements
      * @api
      * @param RemoteWebDriver|null $webDriver a specific webdriver session instance
      */
-    public function _closeSession($webDriver = null): void
+    public function _close_session($web_driver = null): void
     {
-        if (!$webDriver && $this->webDriver) {
-            $webDriver = $this->webDriver;
+        if (!$web_driver && $this->web_driver) {
+            $web_driver = $this->web_driver;
         }
-
-        if (!$webDriver) {
+        if (!$web_driver) {
             return;
         }
-
         try {
-            $webDriver->quit();
-            unset($webDriver);
-        } catch (PhpWebDriverExceptionInterface) {
+            $web_driver->quit();
+            unset($web_driver);
+        } catch (Php_Web_Driver_Exception_Interface) {
             // Session already closed so nothing to do
         }
     }
-
     /**
      * Unselect an option in the given select box.
      *
      * @param string|array|WebDriverBy $select
      * @param string|array|WebDriverBy $option
      */
-    public function unselectOption($select, $option): void
+    public function unselect_option($select, $option): void
     {
-        $el = $this->findField($select);
-
-        $wdSelect = new WebDriverSelect($el);
-
+        $el = $this->find_field($select);
+        $wd_select = new Web_Driver_Select($el);
         if (!is_array($option)) {
             $option = [$option];
         }
-
         $matched = false;
-
         foreach ($option as $opt) {
             try {
-                $wdSelect->deselectByVisibleText($opt);
+                $wd_select->deselect_by_visible_text($opt);
                 $matched = true;
-            } catch (NoSuchElementException $e) {
+            } catch (No_Such_Element_Exception $e) {
                 // exception treated at the end
             }
-
             try {
-                $wdSelect->deselectByValue($opt);
+                $wd_select->deselect_by_value($opt);
                 $matched = true;
-            } catch (NoSuchElementException) {
+            } catch (No_Such_Element_Exception) {
                 // exception treated at the end
             }
         }
-
         if ($matched) {
             return;
         }
-
-        throw new ElementNotFound(json_encode($option), "Option inside {$select} matched by name or value");
+        throw new Element_Not_Found(json_encode($option), "Option inside {$select} matched by name or value");
     }
-
     /**
      * @param string|array|WebDriverBy|WebDriverElement $radioOrCheckbox
      */
-    protected function findCheckable(
-        WebDriverSearchContext $context,
-        $radioOrCheckbox,
-        bool $byValue = false
-    ): ?WebDriverElement {
-        if ($radioOrCheckbox instanceof WebDriverElement) {
-            return $radioOrCheckbox;
+    protected function find_checkable(Web_Driver_Search_Context $context, $radio_or_checkbox, bool $by_value = false): ?Web_Driver_Element
+    {
+        if ($radio_or_checkbox instanceof Web_Driver_Element) {
+            return $radio_or_checkbox;
         }
-
-        if (is_array($radioOrCheckbox) || $radioOrCheckbox instanceof WebDriverBy) {
-            return $this->matchFirstOrFail($this->getBaseElement(), $radioOrCheckbox);
+        if (is_array($radio_or_checkbox) || $radio_or_checkbox instanceof Web_Driver_By) {
+            return $this->match_first_or_fail($this->get_base_element(), $radio_or_checkbox);
         }
-
-        $locator = self::xPathLiteral($radioOrCheckbox);
-        if ($context instanceof WebDriverElement && $context->getTagName() === 'input') {
-            $contextType = $context->getAttribute('type');
-            if (!in_array($contextType, ['checkbox', 'radio'], true)) {
+        $locator = self::x_path_literal($radio_or_checkbox);
+        if ($context instanceof Web_Driver_Element && $context->get_tag_name() === 'input') {
+            $context_type = $context->get_attribute('type');
+            if (!in_array($context_type, ['checkbox', 'radio'], true)) {
                 return null;
             }
-
-            $nameLiteral = self::xPathLiteral($context->getAttribute('name'));
-            $typeLiteral = self::xPathLiteral($contextType);
-            $inputLocatorFragment = "input[@type = {$typeLiteral}][@name = {$nameLiteral}]";
-            $xpath = Locator::combine(
-                "ancestor::form//{$inputLocatorFragment}[(@id = ancestor::form//label[contains(normalize-space(string(.)), {$locator})]/@for) or @placeholder = {$locator}]",
-                "ancestor::form//label[contains(normalize-space(string(.)), {$locator})]//{$inputLocatorFragment}"
-            );
-            if ($byValue) {
-                $xpath = Locator::combine($xpath, "ancestor::form//{$inputLocatorFragment}[@value = {$locator}]");
+            $name_literal = self::x_path_literal($context->get_attribute('name'));
+            $type_literal = self::x_path_literal($context_type);
+            $input_locator_fragment = "input[@type = {$type_literal}][@name = {$name_literal}]";
+            $xpath = Locator::combine("ancestor::form//{$input_locator_fragment}[(@id = ancestor::form//label[contains(normalize-space(string(.)), {$locator})]/@for) or @placeholder = {$locator}]", "ancestor::form//label[contains(normalize-space(string(.)), {$locator})]//{$input_locator_fragment}");
+            if ($by_value) {
+                $xpath = Locator::combine($xpath, "ancestor::form//{$input_locator_fragment}[@value = {$locator}]");
             }
         } else {
-            $xpath = Locator::combine(
-                "//input[@type = 'checkbox' or @type = 'radio'][(@id = //label[contains(normalize-space(string(.)), {$locator})]/@for) or @placeholder = {$locator} or @name = {$locator}]",
-                "//label[contains(normalize-space(string(.)), {$locator})]//input[@type = 'radio' or @type = 'checkbox']"
-            );
-            if ($byValue) {
-                $xpath = Locator::combine(
-                    $xpath,
-                    sprintf("//input[@type = 'checkbox' or @type = 'radio'][@value = %s]", $locator)
-                );
+            $xpath = Locator::combine("//input[@type = 'checkbox' or @type = 'radio'][(@id = //label[contains(normalize-space(string(.)), {$locator})]/@for) or @placeholder = {$locator} or @name = {$locator}]", "//label[contains(normalize-space(string(.)), {$locator})]//input[@type = 'radio' or @type = 'checkbox']");
+            if ($by_value) {
+                $xpath = Locator::combine($xpath, sprintf("//input[@type = 'checkbox' or @type = 'radio'][@value = %s]", $locator));
             }
         }
-
-        $els = $context->findElements(WebDriverBy::xpath($xpath));
+        $els = $context->find_elements(Web_Driver_By::xpath($xpath));
         if (count($els) > 0) {
             return reset($els);
         }
-
-        $els = $context->findElements(WebDriverBy::xpath(str_replace('ancestor::form', '', $xpath)));
+        $els = $context->find_elements(Web_Driver_By::xpath(str_replace('ancestor::form', '', $xpath)));
         if (count($els) > 0) {
             return reset($els);
         }
-
-        $els = $this->match($context, $radioOrCheckbox);
+        $els = $this->match($context, $radio_or_checkbox);
         if (count($els) > 0) {
             return reset($els);
         }
-
         return null;
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      * @return WebDriverElement[]
      */
-    protected function matchCheckables($selector): array
+    protected function match_checkables($selector): array
     {
-        $els = $this->match($this->webDriver, $selector);
+        $els = $this->match($this->web_driver, $selector);
         if ($els === []) {
-            throw new ElementNotFound($selector, 'Element containing radio by CSS or XPath');
+            throw new Element_Not_Found($selector, 'Element containing radio by CSS or XPath');
         }
-
         return $els;
     }
-
-    public function checkOption($option): void
+    public function check_option($option): void
     {
-        $field = $this->findCheckable($this->webDriver, $option);
+        $field = $this->find_checkable($this->web_driver, $option);
         if (!$field) {
-            throw new ElementNotFound($option, 'Checkbox or Radio by Label or CSS or XPath');
+            throw new Element_Not_Found($option, 'Checkbox or Radio by Label or CSS or XPath');
         }
-
-        if ($field->isSelected()) {
+        if ($field->is_selected()) {
             return;
         }
-
         $field->click();
     }
-
-    public function uncheckOption($option): void
+    public function uncheck_option($option): void
     {
-        $field = $this->findCheckable($this->getBaseElement(), $option);
+        $field = $this->find_checkable($this->get_base_element(), $option);
         if (!$field) {
-            throw new ElementNotFound($option, 'Checkbox by Label or CSS or XPath');
+            throw new Element_Not_Found($option, 'Checkbox by Label or CSS or XPath');
         }
-
-        if (!$field->isSelected()) {
+        if (!$field->is_selected()) {
             return;
         }
-
         $field->click();
     }
-
-    public function fillField($field, $value): void
+    public function fill_field($field, $value): void
     {
-        $el = $this->findField($field);
+        $el = $this->find_field($field);
         $el->clear();
-        $el->sendKeys((string)$value);
+        $el->send_keys((string) $value);
     }
-
     /**
      * Clears given field which isn't empty.
      *
@@ -1917,12 +1574,11 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param string|array|WebDriverBy $field
      */
-    public function clearField($field): void
+    public function clear_field($field): void
     {
-        $el = $this->findField($field);
+        $el = $this->find_field($field);
         $el->clear();
     }
-
     /**
      * Type in characters on active element.
      * With a second parameter you can specify delay between key presses.
@@ -1949,131 +1605,100 @@ class WebDriver extends CodeceptionModule implements
         $keys = str_split($text);
         foreach ($keys as $key) {
             sleep($delay);
-            $this->webDriver->getKeyboard()->pressKey($key);
+            $this->web_driver->get_keyboard()->press_key($key);
         }
-
         sleep($delay);
     }
-
-    public function attachFile($field, string $filename): void
+    public function attach_file($field, string $filename): void
     {
-        $el = $this->findField($field);
+        $el = $this->find_field($field);
         // in order to be compatible on different OS
-        $filePath = codecept_data_dir() . $filename;
-        if (!file_exists($filePath)) {
-            throw new InvalidArgumentException("File does not exist: {$filePath}");
+        $file_path = codecept_data_dir() . $filename;
+        if (!file_exists($file_path)) {
+            throw new InvalidArgumentException("File does not exist: {$file_path}");
         }
-
-        if (!is_readable($filePath)) {
-            throw new InvalidArgumentException("File is not readable: {$filePath}");
+        if (!is_readable($file_path)) {
+            throw new InvalidArgumentException("File is not readable: {$file_path}");
         }
-
         // in order for remote upload to be enabled
-        $el->setFileDetector(new LocalFileDetector());
-
+        $el->set_file_detector(new Local_File_Detector());
         // skip file detector for phantomjs
-        if ($this->isPhantom()) {
-            $el->setFileDetector(new UselessFileDetector());
+        if ($this->is_phantom()) {
+            $el->set_file_detector(new Useless_File_Detector());
         }
-
-        $el->sendKeys(realpath($filePath));
+        $el->send_keys(realpath($file_path));
     }
-
     /**
      * Grabs all visible text from the current page.
      */
-    protected function getVisibleText(): ?string
+    protected function get_visible_text(): ?string
     {
-        if ($this->getBaseElement() instanceof RemoteWebElement) {
-            return $this->getBaseElement()->getText();
+        if ($this->get_base_element() instanceof Remote_Web_Element) {
+            return $this->get_base_element()->get_text();
         }
-
-        $els = $this->getBaseElement()->findElements(WebDriverBy::cssSelector('body'));
+        $els = $this->get_base_element()->find_elements(Web_Driver_By::css_selector('body'));
         if (isset($els[0])) {
-            return $els[0]->getText();
+            return $els[0]->get_text();
         }
-
         return '';
     }
-
-    public function grabTextFrom($cssOrXPathOrRegex): mixed
+    public function grab_text_from($css_or_x_path_or_regex): mixed
     {
-        $els = $this->match($this->getBaseElement(), $cssOrXPathOrRegex, false);
+        $els = $this->match($this->get_base_element(), $css_or_x_path_or_regex, false);
         if ($els !== []) {
-            return $els[0]->getText();
+            return $els[0]->get_text();
         }
-
-        if (
-            is_string($cssOrXPathOrRegex)
-            && @preg_match($cssOrXPathOrRegex, $this->webDriver->getPageSource(), $matches)
-        ) {
+        if (is_string($css_or_x_path_or_regex) && @preg_match($css_or_x_path_or_regex, $this->web_driver->get_page_source(), $matches)) {
             return $matches[1];
         }
-
-        throw new ElementNotFound($cssOrXPathOrRegex, 'CSS or XPath or Regex');
+        throw new Element_Not_Found($css_or_x_path_or_regex, 'CSS or XPath or Regex');
     }
-
-    public function grabAttributeFrom($cssOrXpath, $attribute): ?string
+    public function grab_attribute_from($css_or_xpath, $attribute): ?string
     {
-        $el = $this->matchFirstOrFail($this->getBaseElement(), $cssOrXpath);
-        return $el->getAttribute($attribute);
+        $el = $this->match_first_or_fail($this->get_base_element(), $css_or_xpath);
+        return $el->get_attribute($attribute);
     }
-
-    public function grabValueFrom($field): ?string
+    public function grab_value_from($field): ?string
     {
-        $el = $this->findField($field);
+        $el = $this->find_field($field);
         // value of multiple select is the value of the first selected option
-        if ($el->getTagName() == 'select') {
-            $select = new WebDriverSelect($el);
-            return $select->getFirstSelectedOption()->getAttribute('value');
+        if ($el->get_tag_name() == 'select') {
+            $select = new Web_Driver_Select($el);
+            return $select->get_first_selected_option()->get_attribute('value');
         }
-
-        return $el->getAttribute('value');
+        return $el->get_attribute('value');
     }
-
-    public function grabMultiple($cssOrXpath, $attribute = null): array
+    public function grab_multiple($css_or_xpath, $attribute = null): array
     {
-        $els = $this->match($this->getBaseElement(), $cssOrXpath);
-        return array_map(
-            function (WebDriverElement $e) use ($attribute): ?string {
-                if ($attribute) {
-                    return $e->getAttribute($attribute);
-                }
-
-                return $e->getText();
-            },
-            $els
-        );
+        $els = $this->match($this->get_base_element(), $css_or_xpath);
+        return array_map(function (Web_Driver_Element $e) use ($attribute): ?string {
+            if ($attribute) {
+                return $e->get_attribute($attribute);
+            }
+            return $e->get_text();
+        }, $els);
     }
-
-    protected function filterByAttributes($els, array $attributes)
+    protected function filter_by_attributes($els, array $attributes)
     {
         foreach ($attributes as $attr => $value) {
-            $els = array_filter(
-                $els,
-                fn (WebDriverElement $el): bool => $el->getAttribute($attr) == $value
-            );
+            $els = array_filter($els, fn(Web_Driver_Element $el): bool => $el->get_attribute($attr) == $value);
         }
-
         return $els;
     }
-
-    public function seeElement($selector, array $attributes = []): void
+    public function see_element($selector, array $attributes = []): void
     {
-        $this->enableImplicitWait();
-        $els = $this->matchVisible($selector);
-        $this->disableImplicitWait();
-        $els = $this->filterByAttributes($els, $attributes);
-        $this->assertNotEmpty($els);
+        $this->enable_implicit_wait();
+        $els = $this->match_visible($selector);
+        $this->disable_implicit_wait();
+        $els = $this->filter_by_attributes($els, $attributes);
+        $this->assert_not_empty($els);
     }
-
-    public function dontSeeElement($selector, array $attributes = []): void
+    public function dont_see_element($selector, array $attributes = []): void
     {
-        $els = $this->matchVisible($selector);
-        $els = $this->filterByAttributes($els, $attributes);
-        $this->assertEmpty($els);
+        $els = $this->match_visible($selector);
+        $els = $this->filter_by_attributes($els, $attributes);
+        $this->assert_empty($els);
     }
-
     /**
      * Checks that the given element exists on the page, even it is invisible.
      *
@@ -2084,237 +1709,188 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param string|array|WebDriverBy $selector
      */
-    public function seeElementInDOM($selector, array $attributes = []): void
+    public function see_element_in_dom($selector, array $attributes = []): void
     {
-        $this->enableImplicitWait();
-        $els = $this->match($this->getBaseElement(), $selector);
-        $els = $this->filterByAttributes($els, $attributes);
-        $this->disableImplicitWait();
-        $this->assertNotEmpty($els);
+        $this->enable_implicit_wait();
+        $els = $this->match($this->get_base_element(), $selector);
+        $els = $this->filter_by_attributes($els, $attributes);
+        $this->disable_implicit_wait();
+        $this->assert_not_empty($els);
     }
-
     /**
      * Opposite of `seeElementInDOM`.
      *
      * @param string|array|WebDriverBy $selector
      */
-    public function dontSeeElementInDOM($selector, array $attributes = []): void
+    public function dont_see_element_in_dom($selector, array $attributes = []): void
     {
-        $els = $this->match($this->getBaseElement(), $selector);
-        $els = $this->filterByAttributes($els, $attributes);
-        $this->assertEmpty($els);
+        $els = $this->match($this->get_base_element(), $selector);
+        $els = $this->filter_by_attributes($els, $attributes);
+        $this->assert_empty($els);
     }
-
-    public function seeNumberOfElements($selector, $expected): void
+    public function see_number_of_elements($selector, $expected): void
     {
-        $counted = count($this->matchVisible($selector));
+        $counted = count($this->match_visible($selector));
         if (is_array($expected)) {
             [$floor, $ceil] = $expected;
-            $this->assertTrue(
-                $floor <= $counted && $ceil >= $counted,
-                'Number of elements counted differs from expected range'
-            );
+            $this->assert_true($floor <= $counted && $ceil >= $counted, 'Number of elements counted differs from expected range');
         } else {
-            $this->assertSame(
-                $expected,
-                $counted,
-                'Number of elements counted differs from expected number'
-            );
+            $this->assert_same($expected, $counted, 'Number of elements counted differs from expected number');
         }
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      * @param int|array $expected
      * @throws ModuleException
      */
-    public function seeNumberOfElementsInDOM($selector, $expected): void
+    public function see_number_of_elements_in_dom($selector, $expected): void
     {
-        $counted = count($this->match($this->getBaseElement(), $selector));
+        $counted = count($this->match($this->get_base_element(), $selector));
         if (is_array($expected)) {
             [$floor, $ceil] = $expected;
-            $this->assertTrue(
-                $floor <= $counted && $ceil >= $counted,
-                'Number of elements counted differs from expected range'
-            );
+            $this->assert_true($floor <= $counted && $ceil >= $counted, 'Number of elements counted differs from expected range');
         } else {
-            $this->assertSame(
-                $expected,
-                $counted,
-                'Number of elements counted differs from expected number'
-            );
+            $this->assert_same($expected, $counted, 'Number of elements counted differs from expected number');
         }
     }
-
-    public function seeOptionIsSelected($selector, $optionText): void
+    public function see_option_is_selected($selector, $option_text): void
     {
-        $el = $this->findField($selector);
-        if ($el->getTagName() !== 'select') {
-            $els = $this->matchCheckables($selector);
+        $el = $this->find_field($selector);
+        if ($el->get_tag_name() !== 'select') {
+            $els = $this->match_checkables($selector);
             foreach ($els as $k => $el) {
-                $els[$k] = $this->findCheckable($el, $optionText, true);
+                $els[$k] = $this->find_checkable($el, $option_text, true);
             }
-
-            $this->assertNotEmpty(
-                array_filter(
-                    $els,
-                    fn (?\Facebook\WebDriver\WebDriverElement $e): bool => $e && $e->isSelected()
-                )
-            );
+            $this->assert_not_empty(array_filter($els, fn(?\Facebook\Web_Driver\Web_Driver_Element $e): bool => $e && $e->is_selected()));
         } else {
-            $select = new WebDriverSelect($el);
-            $this->assertNodesContain($optionText, $select->getAllSelectedOptions(), 'option');
+            $select = new Web_Driver_Select($el);
+            $this->assert_nodes_contain($option_text, $select->get_all_selected_options(), 'option');
         }
     }
-
-    public function dontSeeOptionIsSelected($selector, $optionText): void
+    public function dont_see_option_is_selected($selector, $option_text): void
     {
-        $el = $this->findField($selector);
-        if ($el->getTagName() !== 'select') {
-            $els = $this->matchCheckables($selector);
+        $el = $this->find_field($selector);
+        if ($el->get_tag_name() !== 'select') {
+            $els = $this->match_checkables($selector);
             foreach ($els as $k => $el) {
-                $els[$k] = $this->findCheckable($el, $optionText, true);
+                $els[$k] = $this->find_checkable($el, $option_text, true);
             }
-
-            $this->assertEmpty(
-                array_filter(
-                    $els,
-                    fn (?\Facebook\WebDriver\WebDriverElement $e): bool => $e && $e->isSelected()
-                )
-            );
+            $this->assert_empty(array_filter($els, fn(?\Facebook\Web_Driver\Web_Driver_Element $e): bool => $e && $e->is_selected()));
         } else {
-            $select = new WebDriverSelect($el);
-            $this->assertNodesNotContain($optionText, $select->getAllSelectedOptions(), 'option');
+            $select = new Web_Driver_Select($el);
+            $this->assert_nodes_not_contain($option_text, $select->get_all_selected_options(), 'option');
         }
     }
-
-    public function seeInTitle($title): void
+    public function see_in_title($title): void
     {
-        $this->assertStringContainsString($title, $this->webDriver->getTitle());
+        $this->assert_string_contains_string($title, $this->web_driver->get_title());
     }
-
-    public function dontSeeInTitle($title): void
+    public function dont_see_in_title($title): void
     {
-        $this->assertStringNotContainsString($title, $this->webDriver->getTitle());
+        $this->assert_string_not_contains_string($title, $this->web_driver->get_title());
     }
-
     /**
      * Accepts the active JavaScript native popup window, as created by `window.alert`|`window.confirm`|`window.prompt`.
      * Don't confuse popups with modal windows,
      * as created by [various libraries](https://jster.net/category/windows-modals-popups).
      */
-    public function acceptPopup(): void
+    public function accept_popup(): void
     {
-        if ($this->isPhantom()) {
-            throw new ModuleException($this, 'PhantomJS does not support working with popups');
+        if ($this->is_phantom()) {
+            throw new Module_Exception($this, 'PhantomJS does not support working with popups');
         }
-
-        $this->webDriver->switchTo()->alert()->accept();
+        $this->web_driver->switch_to()->alert()->accept();
     }
-
     /**
      * Dismisses the active JavaScript popup, as created by `window.alert`, `window.confirm`, or `window.prompt`.
      */
-    public function cancelPopup(): void
+    public function cancel_popup(): void
     {
-        if ($this->isPhantom()) {
-            throw new ModuleException($this, 'PhantomJS does not support working with popups');
+        if ($this->is_phantom()) {
+            throw new Module_Exception($this, 'PhantomJS does not support working with popups');
         }
-
-        $this->webDriver->switchTo()->alert()->dismiss();
+        $this->web_driver->switch_to()->alert()->dismiss();
     }
-
     /**
      * Checks that the active JavaScript popup,
      * as created by `window.alert`|`window.confirm`|`window.prompt`, contains the given string.
      *
      * @throws ModuleException
      */
-    public function seeInPopup(string $text): void
+    public function see_in_popup(string $text): void
     {
-        if ($this->isPhantom()) {
-            throw new ModuleException($this, 'PhantomJS does not support working with popups');
+        if ($this->is_phantom()) {
+            throw new Module_Exception($this, 'PhantomJS does not support working with popups');
         }
-
-        $alert = $this->webDriver->switchTo()->alert();
+        $alert = $this->web_driver->switch_to()->alert();
         try {
-            $this->assertStringContainsString($text, $alert->getText());
-        } catch (PHPUnitAssertionFailedError $failedError) {
+            $this->assert_string_contains_string($text, $alert->get_text());
+        } catch (Php_Unit_Assertion_Failed_Error $failed_error) {
             $alert->dismiss();
-            throw $failedError;
+            throw $failed_error;
         }
     }
-
     /**
      * Checks that the active JavaScript popup,
      * as created by `window.alert`|`window.confirm`|`window.prompt`, does NOT contain the given string.
      *
      * @throws ModuleException
      */
-    public function dontSeeInPopup(string $text): void
+    public function dont_see_in_popup(string $text): void
     {
-        if ($this->isPhantom()) {
-            throw new ModuleException($this, 'PhantomJS does not support working with popups');
+        if ($this->is_phantom()) {
+            throw new Module_Exception($this, 'PhantomJS does not support working with popups');
         }
-
-        $alert = $this->webDriver->switchTo()->alert();
+        $alert = $this->web_driver->switch_to()->alert();
         try {
-            $this->assertStringNotContainsString($text, $alert->getText());
-        } catch (PHPUnitAssertionFailedError $e) {
+            $this->assert_string_not_contains_string($text, $alert->get_text());
+        } catch (Php_Unit_Assertion_Failed_Error $e) {
             $alert->dismiss();
             throw $e;
         }
     }
-
     /**
      * Enters text into a native JavaScript prompt popup, as created by `window.prompt`.
      *
      * @throws ModuleException
      */
-    public function typeInPopup(string $keys): void
+    public function type_in_popup(string $keys): void
     {
-        if ($this->isPhantom()) {
-            throw new ModuleException($this, 'PhantomJS does not support working with popups');
+        if ($this->is_phantom()) {
+            throw new Module_Exception($this, 'PhantomJS does not support working with popups');
         }
-
-        $this->webDriver->switchTo()->alert()->sendKeys($keys);
+        $this->web_driver->switch_to()->alert()->send_keys($keys);
     }
-
     /**
      * Reloads the current page. All forms will be reset, so the outcome is as if the user would press <kbd>Ctrl</kbd>+<kbd>F5</kbd>.
      */
-    public function reloadPage(): void
+    public function reload_page(): void
     {
-        $this->webDriver->navigate()->refresh();
+        $this->web_driver->navigate()->refresh();
     }
-
     /**
      * Moves back in history.
      */
-    public function moveBack(): void
+    public function move_back(): void
     {
-        $this->webDriver->navigate()->back();
-        $this->debug($this->_getCurrentUri());
+        $this->web_driver->navigate()->back();
+        $this->debug($this->_get_current_uri());
     }
-
     /**
      * Moves forward in history.
      */
-    public function moveForward(): void
+    public function move_forward(): void
     {
-        $this->webDriver->navigate()->forward();
-        $this->debug($this->_getCurrentUri());
+        $this->web_driver->navigate()->forward();
+        $this->debug($this->_get_current_uri());
     }
-
-    protected function getSubmissionFormFieldName(string $name): string
+    protected function get_submission_form_field_name(string $name): string
     {
         if (str_ends_with($name, '[]')) {
             return substr($name, 0, -2);
         }
-
         return $name;
     }
-
     /**
      * Submits the given form on the page, optionally with the given form
      * values.  Give the form fields values as an array. Note that hidden fields
@@ -2471,90 +2047,72 @@ class WebDriver extends CodeceptionModule implements
      * @param string|array|WebDriverBy $selector
      * @param string|array|WebDriverBy|null $button
      */
-    public function submitForm($selector, array $params, $button = null): void
+    public function submit_form($selector, array $params, $button = null): void
     {
-        $form = $this->matchFirstOrFail($this->getBaseElement(), $selector);
-
-        $fields = $form->findElements(
-            WebDriverBy::cssSelector(
-                'input:enabled[name],textarea:enabled[name],select:enabled[name],input[type=hidden][name]'
-            )
-        );
+        $form = $this->match_first_or_fail($this->get_base_element(), $selector);
+        $fields = $form->find_elements(Web_Driver_By::css_selector('input:enabled[name],textarea:enabled[name],select:enabled[name],input[type=hidden][name]'));
         foreach ($fields as $field) {
-            $fieldName = $this->getSubmissionFormFieldName($field->getAttribute('name') ?? '');
-            if (!isset($params[$fieldName])) {
+            $field_name = $this->get_submission_form_field_name($field->get_attribute('name') ?? '');
+            if (!isset($params[$field_name])) {
                 continue;
             }
-
-            $value = $params[$fieldName];
-            if (is_array($value) && $field->getTagName() !== 'select') {
-                if ($field->getAttribute('type') === 'checkbox' || $field->getAttribute('type') === 'radio') {
+            $value = $params[$field_name];
+            if (is_array($value) && $field->get_tag_name() !== 'select') {
+                if ($field->get_attribute('type') === 'checkbox' || $field->get_attribute('type') === 'radio') {
                     $found = false;
                     foreach ($value as $index => $val) {
-                        if (!is_bool($val) && $val === $field->getAttribute('value')) {
-                            array_splice($params[$fieldName], $index, 1);
+                        if (!is_bool($val) && $val === $field->get_attribute('value')) {
+                            array_splice($params[$field_name], $index, 1);
                             $value = $val;
                             $found = true;
                             break;
                         }
                     }
-
                     if (!$found && !empty($value) && is_bool(reset($value))) {
-                        $value = array_pop($params[$fieldName]);
+                        $value = array_pop($params[$field_name]);
                     }
                 } else {
-                    $value = array_pop($params[$fieldName]);
+                    $value = array_pop($params[$field_name]);
                 }
             }
-
-            if ($field->getAttribute('type') === 'checkbox' || $field->getAttribute('type') === 'radio') {
-                if ($value === true || $value === $field->getAttribute('value')) {
-                    $this->checkOption($field);
+            if ($field->get_attribute('type') === 'checkbox' || $field->get_attribute('type') === 'radio') {
+                if ($value === true || $value === $field->get_attribute('value')) {
+                    $this->check_option($field);
                 } else {
-                    $this->uncheckOption($field);
+                    $this->uncheck_option($field);
                 }
-            } elseif ($field->getAttribute('type') === 'button' || $field->getAttribute('type') === 'submit') {
+            } elseif ($field->get_attribute('type') === 'button' || $field->get_attribute('type') === 'submit') {
                 continue;
-            } elseif ($field->getTagName() === 'select') {
-                $this->selectOption($field, $value);
+            } elseif ($field->get_tag_name() === 'select') {
+                $this->select_option($field, $value);
             } else {
-                $this->fillField($field, $value);
+                $this->fill_field($field, $value);
             }
         }
-
-        $this->debugSection(
-            'Uri',
-            $form->getAttribute('action') ?: $this->_getCurrentUri()
-        );
-        $this->debugSection('Method', $form->getAttribute('method') ?: 'GET');
-        $this->debugSection('Parameters', json_encode($params, JSON_THROW_ON_ERROR));
-
+        $this->debug_section('Uri', $form->get_attribute('action') ?: $this->_get_current_uri());
+        $this->debug_section('Method', $form->get_attribute('method') ?: 'GET');
+        $this->debug_section('Parameters', json_encode($params, JSON_THROW_ON_ERROR));
         $submitted = false;
         if (!empty($button)) {
             if (is_array($button)) {
-                $buttonSelector = $this->getStrictLocator($button);
-            } elseif ($button instanceof WebDriverBy) {
-                $buttonSelector = $button;
+                $button_selector = $this->get_strict_locator($button);
+            } elseif ($button instanceof Web_Driver_By) {
+                $button_selector = $button;
             } else {
-                $buttonSelector = WebDriverBy::name($button);
+                $button_selector = Web_Driver_By::name($button);
             }
-
-            $els = $form->findElements($buttonSelector);
-
+            $els = $form->find_elements($button_selector);
             if (!empty($els)) {
                 $el = reset($els);
                 $el->click();
                 $submitted = true;
             }
         }
-
         if (!$submitted) {
             $form->submit();
         }
-
-        $this->debugSection('Page', $this->_getCurrentUri());
+        $this->debug_section('Page', $this->_get_current_uri());
     }
-
     /**
      * Waits up to `$timeout` seconds for the given element to change.
      * Element "change" is determined by a callback function which is called repeatedly
@@ -2572,13 +2130,12 @@ class WebDriver extends CodeceptionModule implements
      * @param string|array|WebDriverBy $element
      * @throws ElementNotFound
      */
-    public function waitForElementChange($element, Closure $callback, int $timeout = 30): void
+    public function wait_for_element_change($element, Closure $callback, int $timeout = 30): void
     {
-        $el = $this->matchFirstOrFail($this->getBaseElement(), $element);
-        $checker = fn () => $callback($el);
-        $this->webDriver->wait($timeout)->until($checker);
+        $el = $this->match_first_or_fail($this->get_base_element(), $element);
+        $checker = fn() => $callback($el);
+        $this->web_driver->wait($timeout)->until($checker);
     }
-
     /**
      * Waits up to $timeout seconds for an element to appear on the page.
      * If the element doesn't appear, a timeout exception is thrown.
@@ -2593,12 +2150,11 @@ class WebDriver extends CodeceptionModule implements
      * @param int $timeout seconds
      * @throws Exception
      */
-    public function waitForElement($element, int $timeout = 10): void
+    public function wait_for_element($element, int $timeout = 10): void
     {
-        $condition = WebDriverExpectedCondition::presenceOfElementLocated($this->getLocator($element));
-        $this->webDriver->wait($timeout)->until($condition);
+        $condition = Web_Driver_Expected_Condition::presence_of_element_located($this->get_locator($element));
+        $this->web_driver->wait($timeout)->until($condition);
     }
-
     /**
      * Waits up to $timeout seconds for the given element to be visible on the page.
      * If element doesn't appear, a timeout exception is thrown.
@@ -2613,12 +2169,11 @@ class WebDriver extends CodeceptionModule implements
      * @param int $timeout seconds
      * @throws Exception
      */
-    public function waitForElementVisible($element, int $timeout = 10): void
+    public function wait_for_element_visible($element, int $timeout = 10): void
     {
-        $condition = WebDriverExpectedCondition::visibilityOfElementLocated($this->getLocator($element));
-        $this->webDriver->wait($timeout)->until($condition);
+        $condition = Web_Driver_Expected_Condition::visibility_of_element_located($this->get_locator($element));
+        $this->web_driver->wait($timeout)->until($condition);
     }
-
     /**
      * Waits up to $timeout seconds for the given element to become invisible.
      * If element stays visible, a timeout exception is thrown.
@@ -2632,12 +2187,11 @@ class WebDriver extends CodeceptionModule implements
      * @param int $timeout seconds
      * @throws Exception
      */
-    public function waitForElementNotVisible($element, int $timeout = 10): void
+    public function wait_for_element_not_visible($element, int $timeout = 10): void
     {
-        $condition = WebDriverExpectedCondition::invisibilityOfElementLocated($this->getLocator($element));
-        $this->webDriver->wait($timeout)->until($condition);
+        $condition = Web_Driver_Expected_Condition::invisibility_of_element_located($this->get_locator($element));
+        $this->web_driver->wait($timeout)->until($condition);
     }
-
     /**
      * Waits up to $timeout seconds for the given element to be clickable.
      * If element doesn't become clickable, a timeout exception is thrown.
@@ -2652,12 +2206,11 @@ class WebDriver extends CodeceptionModule implements
      * @param int $timeout seconds
      * @throws Exception
      */
-    public function waitForElementClickable($element, int $timeout = 10): void
+    public function wait_for_element_clickable($element, int $timeout = 10): void
     {
-        $condition = WebDriverExpectedCondition::elementToBeClickable($this->getLocator($element));
-        $this->webDriver->wait($timeout)->until($condition);
+        $condition = Web_Driver_Expected_Condition::element_to_be_clickable($this->get_locator($element));
+        $this->web_driver->wait($timeout)->until($condition);
     }
-
     /**
      * Waits up to $timeout seconds for the given string to appear on the page.
      *
@@ -2675,23 +2228,17 @@ class WebDriver extends CodeceptionModule implements
      * @param null|string|array|WebDriverBy $selector
      * @throws Exception
      */
-    public function waitForText(string $text, int $timeout = 10, $selector = null): void
+    public function wait_for_text(string $text, int $timeout = 10, $selector = null): void
     {
-        $message = sprintf(
-            'Waited for %d secs but text %s still not found',
-            $timeout,
-            Locator::humanReadableString($text)
-        );
+        $message = sprintf('Waited for %d secs but text %s still not found', $timeout, Locator::human_readable_string($text));
         if (!$selector) {
-            $condition = WebDriverExpectedCondition::elementTextContains(WebDriverBy::xpath('//body'), $text);
-            $this->webDriver->wait($timeout)->until($condition, $message);
+            $condition = Web_Driver_Expected_Condition::element_text_contains(Web_Driver_By::xpath('//body'), $text);
+            $this->web_driver->wait($timeout)->until($condition, $message);
             return;
         }
-
-        $condition = WebDriverExpectedCondition::elementTextContains($this->getLocator($selector), $text);
-        $this->webDriver->wait($timeout)->until($condition, $message);
+        $condition = Web_Driver_Expected_Condition::element_text_contains($this->get_locator($selector), $text);
+        $this->web_driver->wait($timeout)->until($condition, $message);
     }
-
     /**
      * Wait for $timeout seconds.
      *
@@ -2701,16 +2248,10 @@ class WebDriver extends CodeceptionModule implements
     public function wait($timeout): void
     {
         if ($timeout >= 1000) {
-            throw new TestRuntimeException(
-                "
-                Waiting for more then 1000 seconds: 16.6667 mins\n
-                Please note that wait method accepts number of seconds as parameter."
-            );
+            throw new Test_Runtime_Exception("\n                Waiting for more then 1000 seconds: 16.6667 mins\n\n                Please note that wait method accepts number of seconds as parameter.");
         }
-
-        usleep((int)($timeout * 1_000_000));
+        usleep((int) ($timeout * 1000000));
     }
-
     /**
      * Low-level API method.
      * If Codeception commands are not enough, this allows you to use Selenium WebDriver methods directly:
@@ -2728,11 +2269,10 @@ class WebDriver extends CodeceptionModule implements
      *
      * @return mixed
      */
-    public function executeInSelenium(Closure $function)
+    public function execute_in_selenium(Closure $function)
     {
-        return $function($this->webDriver);
+        return $function($this->web_driver);
     }
-
     /**
      * Switch to another window identified by name.
      *
@@ -2765,11 +2305,10 @@ class WebDriver extends CodeceptionModule implements
      * });
      * ```
      */
-    public function switchToWindow(?string $name = null): void
+    public function switch_to_window(?string $name = null): void
     {
-        $this->webDriver->switchTo()->window($name);
+        $this->web_driver->switch_to()->window($name);
     }
-
     /**
      * Switch to another iframe on the page.
      *
@@ -2792,11 +2331,10 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param string|null $locator (name, CSS or XPath)
      */
-    public function switchToIFrame(?string $locator = null): void
+    public function switch_to_i_frame(?string $locator = null): void
     {
-        $this->findAndSwitchToFrame($locator, 'iframe');
+        $this->find_and_switch_to_frame($locator, 'iframe');
     }
-
     /**
      * Switch to another frame on the page.
      *
@@ -2819,37 +2357,31 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param string|null $locator (name, CSS or XPath)
      */
-    public function switchToFrame(?string $locator = null): void
+    public function switch_to_frame(?string $locator = null): void
     {
-        $this->findAndSwitchToFrame($locator);
+        $this->find_and_switch_to_frame($locator);
     }
-
-    private function findAndSwitchToFrame(?string $locator = null, string $tag = 'frame'): void
+    private function find_and_switch_to_frame(?string $locator = null, string $tag = 'frame'): void
     {
         if ($locator === null) {
-            $this->webDriver->switchTo()->defaultContent();
+            $this->web_driver->switch_to()->default_content();
             return;
         }
-
         $els = null;
         try {
-            $els = $this->_findElements("{$tag}[name='{$locator}']");
+            $els = $this->_find_elements("{$tag}[name='{$locator}']");
         } catch (Exception $e) {
-            $this->debug('Failed to find locator by name: ' . $e->getMessage());
+            $this->debug('Failed to find locator by name: ' . $e->get_message());
         }
-
         if (!isset($els) || !is_array($els) || $els === []) {
             $this->debug(ucfirst($tag) . ' was not found by name, locating ' . $tag . ' by CSS or XPath');
-            $els = $this->_findElements($locator);
+            $els = $this->_find_elements($locator);
         }
-
         if ($els === []) {
-            throw new ElementNotFound($locator, ucfirst($tag));
+            throw new Element_Not_Found($locator, ucfirst($tag));
         }
-
-        $this->webDriver->switchTo()->frame($els[0]);
+        $this->web_driver->switch_to()->frame($els[0]);
     }
-
     /**
      * Executes JavaScript and waits up to $timeout seconds for it to return true.
      *
@@ -2862,17 +2394,12 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param int $timeout seconds
      */
-    public function waitForJS(string $script, int $timeout = 5): void
+    public function wait_for_js(string $script, int $timeout = 5): void
     {
-        $condition = fn ($wd) => $wd->executeScript($script);
-        $message = sprintf(
-            "Waited for %d secs but script %s still doesn't evaluate to true",
-            $timeout,
-            Locator::humanReadableString($script)
-        );
-        $this->webDriver->wait($timeout)->until($condition, $message);
+        $condition = fn($wd) => $wd->execute_script($script);
+        $message = sprintf("Waited for %d secs but script %s still doesn't evaluate to true", $timeout, Locator::human_readable_string($script));
+        $this->web_driver->wait($timeout)->until($condition, $message);
     }
-
     /**
      * Executes JavaScript commands.
      *
@@ -2886,11 +2413,10 @@ class WebDriver extends CodeceptionModule implements
      *
      * @return mixed
      */
-    public function executeJS(string $script, array $arguments = [])
+    public function execute_js(string $script, array $arguments = [])
     {
-        return $this->webDriver->executeScript($script, $arguments);
+        return $this->web_driver->execute_script($script, $arguments);
     }
-
     /**
      * Executes asynchronous JavaScript.
      * A callback should be executed by JavaScript to exit from a script.
@@ -2907,19 +2433,17 @@ class WebDriver extends CodeceptionModule implements
      *
      * @return mixed
      */
-    public function executeAsyncJS(string $script, array $arguments = [])
+    public function execute_async_js(string $script, array $arguments = [])
     {
-        return $this->webDriver->executeAsyncScript($script, $arguments);
+        return $this->web_driver->execute_async_script($script, $arguments);
     }
-
     /**
      * Maximizes the current window.
      */
-    public function maximizeWindow(): void
+    public function maximize_window(): void
     {
-        $this->webDriver->manage()->window()->maximize();
+        $this->web_driver->manage()->window()->maximize();
     }
-
     /**
      * Performs a simple mouse drag-and-drop operation.
      *
@@ -2931,15 +2455,13 @@ class WebDriver extends CodeceptionModule implements
      * @param string|array|WebDriverBy $source (CSS ID or XPath)
      * @param string|array|WebDriverBy $target (CSS ID or XPath)
      */
-    public function dragAndDrop($source, $target): void
+    public function drag_and_drop($source, $target): void
     {
-        $sourceNodes = $this->matchFirstOrFail($this->getBaseElement(), $source);
-        $targetNodes = $this->matchFirstOrFail($this->getBaseElement(), $target);
-
-        $action = new WebDriverActions($this->webDriver);
-        $action->dragAndDrop($sourceNodes, $targetNodes)->perform();
+        $source_nodes = $this->match_first_or_fail($this->get_base_element(), $source);
+        $target_nodes = $this->match_first_or_fail($this->get_base_element(), $target);
+        $action = new Web_Driver_Actions($this->web_driver);
+        $action->drag_and_drop($source_nodes, $target_nodes)->perform();
     }
-
     /**
      * Move mouse over the first element matched by the given locator.
      * If the first parameter null then the page is used.
@@ -2957,17 +2479,15 @@ class WebDriver extends CodeceptionModule implements
      * @param null|string|array|WebDriverBy $cssOrXPath css or xpath of the web element
      * @throws ElementNotFound
      */
-    public function moveMouseOver($cssOrXPath = null, ?int $offsetX = null, ?int $offsetY = null): void
+    public function move_mouse_over($css_or_x_path = null, ?int $offset_x = null, ?int $offset_y = null): void
     {
         $where = null;
-        if (null !== $cssOrXPath) {
-            $el = $this->matchFirstOrFail($this->getBaseElement(), $cssOrXPath);
-            $where = $el->getCoordinates();
+        if (null !== $css_or_x_path) {
+            $el = $this->match_first_or_fail($this->get_base_element(), $css_or_x_path);
+            $where = $el->get_coordinates();
         }
-
-        $this->webDriver->getMouse()->mouseMove($where, $offsetX, $offsetY);
+        $this->web_driver->get_mouse()->mouse_move($where, $offset_x, $offset_y);
     }
-
     /**
      * Performs click with the left mouse button on an element.
      * If the first parameter `null` then the offset is relative to the actual mouse position.
@@ -2986,12 +2506,11 @@ class WebDriver extends CodeceptionModule implements
      *
      * @throws ElementNotFound
      */
-    public function clickWithLeftButton($cssOrXPath = null, ?int $offsetX = null, ?int $offsetY = null): void
+    public function click_with_left_button($css_or_x_path = null, ?int $offset_x = null, ?int $offset_y = null): void
     {
-        $this->moveMouseOver($cssOrXPath, $offsetX, $offsetY);
-        $this->webDriver->getMouse()->click();
+        $this->move_mouse_over($css_or_x_path, $offset_x, $offset_y);
+        $this->web_driver->get_mouse()->click();
     }
-
     /**
      * Performs contextual click with the right mouse button on an element.
      * If the first parameter `null` then the offset is relative to the actual mouse position.
@@ -3009,131 +2528,105 @@ class WebDriver extends CodeceptionModule implements
      * @param null|string|array|WebDriverBy $cssOrXPath css or xpath of the web element (body by default).
      * @throws ElementNotFound
      */
-    public function clickWithRightButton($cssOrXPath = null, ?int $offsetX = null, ?int $offsetY = null): void
+    public function click_with_right_button($css_or_x_path = null, ?int $offset_x = null, ?int $offset_y = null): void
     {
-        $this->moveMouseOver($cssOrXPath, $offsetX, $offsetY);
-        $this->webDriver->getMouse()->contextClick();
+        $this->move_mouse_over($css_or_x_path, $offset_x, $offset_y);
+        $this->web_driver->get_mouse()->context_click();
     }
-
     /**
      * Performs a double click on an element matched by CSS or XPath.
      *
      * @param string|array|WebDriverBy $cssOrXPath
      * @throws ElementNotFound
      */
-    public function doubleClick($cssOrXPath): void
+    public function double_click($css_or_x_path): void
     {
-        $el = $this->matchFirstOrFail($this->getBaseElement(), $cssOrXPath);
-        $this->webDriver->getMouse()->doubleClick($el->getCoordinates());
+        $el = $this->match_first_or_fail($this->get_base_element(), $css_or_x_path);
+        $this->web_driver->get_mouse()->double_click($el->get_coordinates());
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      * @return WebDriverElement[]
      */
-    protected function match(WebDriverSearchContext $page, $selector, bool $throwMalformed = true): array
+    protected function match(Web_Driver_Search_Context $page, $selector, bool $throw_malformed = true): array
     {
         if (is_array($selector)) {
             try {
-                return $page->findElements($this->getStrictLocator($selector));
-            } catch (InvalidSelectorException) {
-                throw new MalformedLocatorException(key($selector) . ' => ' . reset($selector), 'Strict locator');
-            } catch (InvalidElementStateException $exception) {
-                if ($this->isPhantom() && $exception->getResults()['status'] == 12) {
-                    throw new MalformedLocatorException(
-                        key($selector) . ' => ' . reset($selector),
-                        'Strict locator ' . $exception->getCode()
-                    );
+                return $page->find_elements($this->get_strict_locator($selector));
+            } catch (Invalid_Selector_Exception) {
+                throw new Malformed_Locator_Exception(key($selector) . ' => ' . reset($selector), 'Strict locator');
+            } catch (Invalid_Element_State_Exception $exception) {
+                if ($this->is_phantom() && $exception->get_results()['status'] == 12) {
+                    throw new Malformed_Locator_Exception(key($selector) . ' => ' . reset($selector), 'Strict locator ' . $exception->get_code());
                 }
             }
         }
-
-        if ($selector instanceof WebDriverBy) {
+        if ($selector instanceof Web_Driver_By) {
             try {
-                return $page->findElements($selector);
-            } catch (InvalidSelectorException) {
-                throw new MalformedLocatorException(
-                    sprintf(
-                        "WebDriverBy::%s('%s')",
-                        $selector->getMechanism(),
-                        $selector->getValue()
-                    ),
-                    'WebDriver'
-                );
+                return $page->find_elements($selector);
+            } catch (Invalid_Selector_Exception) {
+                throw new Malformed_Locator_Exception(sprintf("WebDriverBy::%s('%s')", $selector->get_mechanism(), $selector->get_value()), 'WebDriver');
             }
         }
-
-        $isValidLocator = false;
+        $is_valid_locator = false;
         $nodes = [];
         try {
-            if (Locator::isID($selector)) {
-                $isValidLocator = true;
-                $nodes = $page->findElements(WebDriverBy::id(substr($selector, 1)));
+            if (Locator::is_id($selector)) {
+                $is_valid_locator = true;
+                $nodes = $page->find_elements(Web_Driver_By::id(substr($selector, 1)));
             }
-
-            if (Locator::isClass($selector)) {
-                $isValidLocator = true;
-                $nodes = $page->findElements(WebDriverBy::className(substr($selector, 1)));
+            if (Locator::is_class($selector)) {
+                $is_valid_locator = true;
+                $nodes = $page->find_elements(Web_Driver_By::class_name(substr($selector, 1)));
             }
-
-            if (empty($nodes) && Locator::isCSS($selector)) {
-                $isValidLocator = true;
+            if (empty($nodes) && Locator::is_css($selector)) {
+                $is_valid_locator = true;
                 try {
-                    $nodes = $page->findElements(WebDriverBy::cssSelector($selector));
-                } catch (InvalidElementStateException) {
-                    $nodes = $page->findElements(WebDriverBy::linkText($selector));
+                    $nodes = $page->find_elements(Web_Driver_By::css_selector($selector));
+                } catch (Invalid_Element_State_Exception) {
+                    $nodes = $page->find_elements(Web_Driver_By::link_text($selector));
                 }
             }
-
-            if (empty($nodes) && Locator::isXPath($selector)) {
-                $isValidLocator = true;
-                $nodes = $page->findElements(WebDriverBy::xpath($selector));
+            if (empty($nodes) && Locator::is_x_path($selector)) {
+                $is_valid_locator = true;
+                $nodes = $page->find_elements(Web_Driver_By::xpath($selector));
             }
-        } catch (InvalidSelectorException) {
-            throw new MalformedLocatorException($selector);
+        } catch (Invalid_Selector_Exception) {
+            throw new Malformed_Locator_Exception($selector);
         }
-
-        if (!$isValidLocator && $throwMalformed) {
-            throw new MalformedLocatorException($selector);
+        if (!$is_valid_locator && $throw_malformed) {
+            throw new Malformed_Locator_Exception($selector);
         }
-
         return $nodes;
     }
-
-    protected function getStrictLocator(array $by): WebDriverBy
+    protected function get_strict_locator(array $by): Web_Driver_By
     {
         $type = key($by);
         $locator = $by[$type];
         return match ($type) {
-            'id' => WebDriverBy::id($locator),
-            'name' => WebDriverBy::name($locator),
-            'css' => WebDriverBy::cssSelector($locator),
-            'xpath' => WebDriverBy::xpath($locator),
-            'link' => WebDriverBy::linkText($locator),
-            'class' => WebDriverBy::className($locator),
-            default => throw new MalformedLocatorException(
-                "{$type} => {$locator}",
-                'Strict locator can be either xpath, css, id, link, class, name: '
-            ),
+            'id' => Web_Driver_By::id($locator),
+            'name' => Web_Driver_By::name($locator),
+            'css' => Web_Driver_By::css_selector($locator),
+            'xpath' => Web_Driver_By::xpath($locator),
+            'link' => Web_Driver_By::link_text($locator),
+            'class' => Web_Driver_By::class_name($locator),
+            default => throw new Malformed_Locator_Exception("{$type} => {$locator}", 'Strict locator can be either xpath, css, id, link, class, name: '),
         };
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      * @throws ElementNotFound
      */
-    protected function matchFirstOrFail(WebDriverSearchContext $page, $selector): WebDriverElement
+    protected function match_first_or_fail(Web_Driver_Search_Context $page, $selector): Web_Driver_Element
     {
-        $this->enableImplicitWait();
+        $this->enable_implicit_wait();
         $els = $this->match($page, $selector);
-        $this->disableImplicitWait();
+        $this->disable_implicit_wait();
         if ($els === []) {
-            throw new ElementNotFound($selector, 'CSS or XPath');
+            throw new Element_Not_Found($selector, 'CSS or XPath');
         }
-
         return reset($els);
     }
-
     /**
      * Presses the given key on the given element.
      * To specify a character and modifier (e.g. <kbd>Ctrl</kbd>, <kbd>Alt</kbd>, <kbd>Shift</kbd>, <kbd>Meta</kbd>), pass an array for `$char` with
@@ -3154,52 +2647,45 @@ class WebDriver extends CodeceptionModule implements
      * @param string|list<string> $chars Can be char or array with modifier. You can provide several chars.
      * @throws ElementNotFound
      */
-    public function pressKey($element, ...$chars): void
+    public function press_key($element, ...$chars): void
     {
-        $el = $this->matchFirstOrFail($this->getBaseElement(), $element);
+        $el = $this->match_first_or_fail($this->get_base_element(), $element);
         $keys = [];
         foreach ($chars as $char) {
-            $keys[] = $this->convertKeyModifier($char);
+            $keys[] = $this->convert_key_modifier($char);
         }
-
-        $el->sendKeys($keys);
+        $el->send_keys($keys);
     }
-
     /**
      * @param string|string[] $char
      * @return string|string[]
      */
-    protected function convertKeyModifier($char)
+    protected function convert_key_modifier($char)
     {
         if (is_string($char)) {
             return $char;
         }
-
         if (!isset($char[1])) {
             return $char;
         }
-
         [$modifier, $key] = $char;
         return match ($modifier) {
-            'ctrl', 'control' => [WebDriverKeys::CONTROL, $key],
-            'alt' => [WebDriverKeys::ALT, $key],
-            'shift' => [WebDriverKeys::SHIFT, $key],
-            'meta' => [WebDriverKeys::META, $key],
+            'ctrl', 'control' => [Web_Driver_Keys::CONTROL, $key],
+            'alt' => [Web_Driver_Keys::ALT, $key],
+            'shift' => [Web_Driver_Keys::SHIFT, $key],
+            'meta' => [Web_Driver_Keys::META, $key],
             default => $char,
         };
     }
-
-    protected function assertNodesContain($text, $nodes, $selector = null): void
+    protected function assert_nodes_contain($text, $nodes, $selector = null): void
     {
-        $this->assertNodeConstraint($nodes, new WebDriverConstraint($text, $this->_getCurrentUri()), $selector);
+        $this->assert_node_constraint($nodes, new Web_Driver_Constraint($text, $this->_get_current_uri()), $selector);
     }
-
-    protected function assertNodesNotContain($text, $nodes, $selector = null): void
+    protected function assert_nodes_not_contain($text, $nodes, $selector = null): void
     {
-        $this->assertNodeConstraint($nodes, new WebDriverConstraintNot($text, $this->_getCurrentUri()), $selector);
+        $this->assert_node_constraint($nodes, new Web_Driver_Constraint_Not($text, $this->_get_current_uri()), $selector);
     }
-
-    protected function assertNodeConstraint($nodes, WebDriverConstraint $constraint, $selector = null): void
+    protected function assert_node_constraint($nodes, Web_Driver_Constraint $constraint, $selector = null): void
     {
         $message = $selector;
         if (is_array($selector)) {
@@ -3207,46 +2693,24 @@ class WebDriver extends CodeceptionModule implements
             $locator = $selector[$type];
             $message = $type . ':' . $locator;
         }
-
-        $this->assertThat($nodes, $constraint, $message);
+        $this->assert_that($nodes, $constraint, $message);
     }
-
-    protected function assertPageContains($needle, string $message = ''): void
+    protected function assert_page_contains($needle, string $message = ''): void
     {
-        $this->assertThat(
-            htmlspecialchars_decode((string) $this->getVisibleText()),
-            new PageConstraint($needle, $this->_getCurrentUri()),
-            $message
-        );
+        $this->assert_that(htmlspecialchars_decode((string) $this->get_visible_text()), new Page_Constraint($needle, $this->_get_current_uri()), $message);
     }
-
-    protected function assertPageNotContains($needle, string $message = ''): void
+    protected function assert_page_not_contains($needle, string $message = ''): void
     {
-        $this->assertThatItsNot(
-            htmlspecialchars_decode((string) $this->getVisibleText()),
-            new PageConstraint($needle, $this->_getCurrentUri()),
-            $message
-        );
+        $this->assert_that_its_not(htmlspecialchars_decode((string) $this->get_visible_text()), new Page_Constraint($needle, $this->_get_current_uri()), $message);
     }
-
-    protected function assertPageSourceContains($needle, string $message = ''): void
+    protected function assert_page_source_contains($needle, string $message = ''): void
     {
-        $this->assertThat(
-            $this->webDriver->getPageSource(),
-            new PageConstraint($needle, $this->_getCurrentUri()),
-            $message
-        );
+        $this->assert_that($this->web_driver->get_page_source(), new Page_Constraint($needle, $this->_get_current_uri()), $message);
     }
-
-    protected function assertPageSourceNotContains($needle, string $message = ''): void
+    protected function assert_page_source_not_contains($needle, string $message = ''): void
     {
-        $this->assertThatItsNot(
-            $this->webDriver->getPageSource(),
-            new PageConstraint($needle, $this->_getCurrentUri()),
-            $message
-        );
+        $this->assert_that_its_not($this->web_driver->get_page_source(), new Page_Constraint($needle, $this->_get_current_uri()), $message);
     }
-
     /**
      * Append the given text to the given element.
      * Can also add a selection to a select box.
@@ -3260,199 +2724,162 @@ class WebDriver extends CodeceptionModule implements
      * @param string|array|WebDriverBy $field
      * @throws ElementNotFound
      */
-    public function appendField($field, string $value): void
+    public function append_field($field, string $value): void
     {
-        $el = $this->findField($field);
-
-        switch ($el->getTagName()) {
+        $el = $this->find_field($field);
+        switch ($el->get_tag_name()) {
             //Multiple select
             case 'select':
                 $matched = false;
-                $wdSelect = new WebDriverSelect($el);
+                $wd_select = new Web_Driver_Select($el);
                 try {
-                    $wdSelect->selectByVisibleText($value);
+                    $wd_select->select_by_visible_text($value);
                     $matched = true;
-                } catch (NoSuchElementException $e) {
+                } catch (No_Such_Element_Exception $e) {
                     // exception treated at the end
                 }
-
                 try {
-                    $wdSelect->selectByValue($value);
+                    $wd_select->select_by_value($value);
                     $matched = true;
-                } catch (NoSuchElementException) {
+                } catch (No_Such_Element_Exception) {
                     // exception treated at the end
                 }
-
                 if ($matched) {
                     return;
                 }
-
-                throw new ElementNotFound(
-                    json_encode($value, JSON_THROW_ON_ERROR),
-                    "Option inside {$field} matched by name or value"
-                );
+                throw new Element_Not_Found(json_encode($value, JSON_THROW_ON_ERROR), "Option inside {$field} matched by name or value");
             case 'textarea':
-                $el->sendKeys($value);
+                $el->send_keys($value);
                 return;
-            case 'div': //allows for content editable divs
-                $el->sendKeys(WebDriverKeys::END);
-                $el->sendKeys($value);
+            case 'div':
+                //allows for content editable divs
+                $el->send_keys(Web_Driver_Keys::END);
+                $el->send_keys($value);
                 return;
-                //Text, Checkbox, Radio
+            //Text, Checkbox, Radio
             case 'input':
-                $type = $el->getAttribute('type');
+                $type = $el->get_attribute('type');
                 if ($type == 'checkbox') {
                     //Find by value or css,id,xpath
-                    $field = $this->findCheckable($this->getBaseElement(), $value, true);
+                    $field = $this->find_checkable($this->get_base_element(), $value, true);
                     if (!$field) {
-                        throw new ElementNotFound($value, 'Checkbox or Radio by Label or CSS or XPath');
+                        throw new Element_Not_Found($value, 'Checkbox or Radio by Label or CSS or XPath');
                     }
-                    if ($field->isSelected()) {
+                    if ($field->is_selected()) {
                         return;
                     }
                     $field->click();
                     return;
                 }
-
                 if ($type == 'radio') {
-                    $this->selectOption($field, $value);
+                    $this->select_option($field, $value);
                     return;
                 }
-
-                $el->sendKeys($value);
+                $el->send_keys($value);
                 return;
         }
-
-        throw new ElementNotFound($field, 'Field by name, label, CSS or XPath');
+        throw new Element_Not_Found($field, 'Field by name, label, CSS or XPath');
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      */
-    protected function matchVisible($selector): array
+    protected function match_visible($selector): array
     {
-        $els = $this->match($this->getBaseElement(), $selector);
-        return array_filter(
-            $els,
-            fn (WebDriverElement $el): bool => $el->isDisplayed()
-        );
+        $els = $this->match($this->get_base_element(), $selector);
+        return array_filter($els, fn(Web_Driver_Element $el): bool => $el->is_displayed());
     }
-
     /**
      * @param string|array|WebDriverBy $selector
      * @throws InvalidArgumentException
      */
-    protected function getLocator($selector): WebDriverBy
+    protected function get_locator($selector): Web_Driver_By
     {
-        if ($selector instanceof WebDriverBy) {
+        if ($selector instanceof Web_Driver_By) {
             return $selector;
         }
-
         if (is_array($selector)) {
-            return $this->getStrictLocator($selector);
+            return $this->get_strict_locator($selector);
         }
-
-        if (Locator::isID($selector)) {
-            return WebDriverBy::id(substr($selector, 1));
+        if (Locator::is_id($selector)) {
+            return Web_Driver_By::id(substr($selector, 1));
         }
-
-        if (Locator::isCSS($selector)) {
-            return WebDriverBy::cssSelector($selector);
+        if (Locator::is_css($selector)) {
+            return Web_Driver_By::css_selector($selector);
         }
-
-        if (Locator::isXPath($selector)) {
-            return WebDriverBy::xpath($selector);
+        if (Locator::is_x_path($selector)) {
+            return Web_Driver_By::xpath($selector);
         }
-
         throw new InvalidArgumentException('Only CSS or XPath allowed');
     }
-
-    public function saveSessionSnapshot($name): void
+    public function save_session_snapshot($name): void
     {
-        $this->sessionSnapshots[$name] = [];
-
-        foreach ($this->webDriver->manage()->getCookies() as $cookie) {
-            if (in_array(trim((string) $cookie['name']), [LocalServer::COVERAGE_COOKIE, LocalServer::COVERAGE_COOKIE_ERROR])) {
+        $this->session_snapshots[$name] = [];
+        foreach ($this->web_driver->manage()->get_cookies() as $cookie) {
+            if (in_array(trim((string) $cookie['name']), [Local_Server::COVERAGE_COOKIE, Local_Server::COVERAGE_COOKIE_ERROR])) {
                 continue;
             }
-
-            if ($this->cookieDomainMatchesConfigUrl($cookie)) {
-                $this->sessionSnapshots[$name][] = $cookie;
+            if ($this->cookie_domain_matches_config_url($cookie)) {
+                $this->session_snapshots[$name][] = $cookie;
             }
         }
-
-        $this->debugSection('Snapshot', sprintf('Saved "%s" session snapshot', $name));
+        $this->debug_section('Snapshot', sprintf('Saved "%s" session snapshot', $name));
     }
-
-    public function loadSessionSnapshot($name, bool $showDebug = true): bool
+    public function load_session_snapshot($name, bool $show_debug = true): bool
     {
-        if (!isset($this->sessionSnapshots[$name])) {
+        if (!isset($this->session_snapshots[$name])) {
             return false;
         }
-
-        foreach ($this->webDriver->manage()->getCookies() as $cookie) {
-            if (in_array(trim((string) $cookie['name']), [LocalServer::COVERAGE_COOKIE, LocalServer::COVERAGE_COOKIE_ERROR])) {
+        foreach ($this->web_driver->manage()->get_cookies() as $cookie) {
+            if (in_array(trim((string) $cookie['name']), [Local_Server::COVERAGE_COOKIE, Local_Server::COVERAGE_COOKIE_ERROR])) {
                 continue;
             }
-
-            $this->webDriver->manage()->deleteCookieNamed($cookie['name']);
+            $this->web_driver->manage()->delete_cookie_named($cookie['name']);
         }
-
-        foreach ($this->sessionSnapshots[$name] as $cookie) {
-            $this->setCookie($cookie['name'], $cookie['value'], (array)$cookie, false);
+        foreach ($this->session_snapshots[$name] as $cookie) {
+            $this->set_cookie($cookie['name'], $cookie['value'], (array) $cookie, false);
         }
-
-        if ($showDebug) {
-            $this->debugCookies();
+        if ($show_debug) {
+            $this->debug_cookies();
         }
-        $this->debugSection('Snapshot', sprintf('Restored "%s" session snapshot', $name));
+        $this->debug_section('Snapshot', sprintf('Restored "%s" session snapshot', $name));
         return true;
     }
-
-    public function deleteSessionSnapshot($name): void
+    public function delete_session_snapshot($name): void
     {
-        if (isset($this->sessionSnapshots[$name])) {
-            unset($this->sessionSnapshots[$name]);
+        if (isset($this->session_snapshots[$name])) {
+            unset($this->session_snapshots[$name]);
         }
-
-        $this->debugSection('Snapshot', sprintf('Deleted "%s" session snapshot', $name));
+        $this->debug_section('Snapshot', sprintf('Deleted "%s" session snapshot', $name));
     }
-
     /**
      * Check if the cookie domain matches the config URL.
      *
      * Taken from Guzzle\Cookie\SetCookie
      */
-    private function cookieDomainMatchesConfigUrl(array|WebDriverCookie $cookie): bool
+    private function cookie_domain_matches_config_url(array|Web_Driver_Cookie $cookie): bool
     {
         if (!isset($cookie['domain'])) {
             return true;
         }
-
         $domain = parse_url((string) $this->config['url'], PHP_URL_HOST);
-
         // Remove the leading '.' as per spec in RFC 6265.
         // https://tools.ietf.org/html/rfc6265#section-5.2.3
-        $cookieDomain = ltrim($cookie['domain'], '.');
+        $cookie_domain = ltrim($cookie['domain'], '.');
         // Domain not set or exact match.
-        if (!$cookieDomain || !strcasecmp($domain, $cookieDomain)) {
+        if (!$cookie_domain || !strcasecmp($domain, $cookie_domain)) {
             return true;
         }
-
         // Matching the subdomain according to RFC 6265.
         // https://tools.ietf.org/html/rfc6265#section-5.1.3
         if (filter_var($domain, FILTER_VALIDATE_IP)) {
             return false;
         }
-
-        return (bool) preg_match('/\.' . preg_quote($cookieDomain, '/') . '$/', $domain);
+        return (bool) preg_match('/\.' . preg_quote($cookie_domain, '/') . '$/', $domain);
     }
-
-    protected function isPhantom(): bool
+    protected function is_phantom(): bool
     {
         return str_starts_with((string) $this->config['browser'], 'phantom');
     }
-
     /**
      * Move to the middle of the given element matched by the given locator.
      * Extra shift, calculated from the top-left corner of the element,
@@ -3465,14 +2892,13 @@ class WebDriver extends CodeceptionModule implements
      *
      * @param string|array|WebDriverBy $selector
      */
-    public function scrollTo($selector, ?int $offsetX = null, ?int $offsetY = null): void
+    public function scroll_to($selector, ?int $offset_x = null, ?int $offset_y = null): void
     {
-        $el = $this->matchFirstOrFail($this->getBaseElement(), $selector);
-        $x = $el->getLocation()->getX() + $offsetX;
-        $y = $el->getLocation()->getY() + $offsetY;
-        $this->webDriver->executeScript(sprintf('window.scrollTo(%d, %d)', $x, $y));
+        $el = $this->match_first_or_fail($this->get_base_element(), $selector);
+        $x = $el->get_location()->get_x() + $offset_x;
+        $y = $el->get_location()->get_y() + $offset_y;
+        $this->web_driver->execute_script(sprintf('window.scrollTo(%d, %d)', $x, $y));
     }
-
     /**
      * Opens a new browser tab and switches to it.
      *
@@ -3484,12 +2910,11 @@ class WebDriver extends CodeceptionModule implements
      * * Some ad-blockers might restrict it.
      * * The sessionStorage is copied to the new tab (contrary to a tab that was manually opened by the user)
      */
-    public function openNewTab(): void
+    public function open_new_tab(): void
     {
-        $this->executeJS("window.open('about:blank','_blank');");
-        $this->switchToNextTab();
+        $this->execute_js("window.open('about:blank','_blank');");
+        $this->switch_to_next_tab();
     }
-
     /**
      * Checks current number of opened tabs
      *
@@ -3498,11 +2923,10 @@ class WebDriver extends CodeceptionModule implements
      * $I->seeNumberOfTabs(2);
      * ```
      */
-    public function seeNumberOfTabs(int $number): void
+    public function see_number_of_tabs(int $number): void
     {
-        $this->assertCount($number, $this->webDriver->getWindowHandles());
+        $this->assert_count($number, $this->web_driver->get_window_handles());
     }
-
     /**
      * Closes current browser tab and switches to previous active tab.
      *
@@ -3511,17 +2935,16 @@ class WebDriver extends CodeceptionModule implements
      * $I->closeTab();
      * ```
      */
-    public function closeTab(): void
+    public function close_tab(): void
     {
-        $currentTab = $this->webDriver->getWindowHandle();
-        $prevTab = $this->getRelativeTabHandle(-1);
-        if ($prevTab === $currentTab) {
-            throw new ModuleException($this, 'Will not close the last open tab');
+        $current_tab = $this->web_driver->get_window_handle();
+        $prev_tab = $this->get_relative_tab_handle(-1);
+        if ($prev_tab === $current_tab) {
+            throw new Module_Exception($this, 'Will not close the last open tab');
         }
-        $this->webDriver->close();
-        $this->webDriver->switchTo()->window($prevTab);
+        $this->web_driver->close();
+        $this->web_driver->switch_to()->window($prev_tab);
     }
-
     /**
      * Switches to next browser tab.
      * An offset can be specified.
@@ -3534,12 +2957,11 @@ class WebDriver extends CodeceptionModule implements
      * $I->switchToNextTab(2);
      * ```
      */
-    public function switchToNextTab(int $offset = 1): void
+    public function switch_to_next_tab(int $offset = 1): void
     {
-        $tab = $this->getRelativeTabHandle($offset);
-        $this->webDriver->switchTo()->window($tab);
+        $tab = $this->get_relative_tab_handle($offset);
+        $this->web_driver->switch_to()->window($tab);
     }
-
     /**
      * Switches to previous browser tab.
      * An offset can be specified.
@@ -3552,27 +2974,24 @@ class WebDriver extends CodeceptionModule implements
      * $I->switchToPreviousTab(2);
      * ```
      */
-    public function switchToPreviousTab(int $offset = 1): void
+    public function switch_to_previous_tab(int $offset = 1): void
     {
-        $this->switchToNextTab(-$offset);
+        $this->switch_to_next_tab(-$offset);
     }
-
-    protected function getRelativeTabHandle($offset)
+    protected function get_relative_tab_handle($offset)
     {
-        if ($this->isPhantom()) {
-            throw new ModuleException($this, "PhantomJS doesn't support tab actions");
+        if ($this->is_phantom()) {
+            throw new Module_Exception($this, "PhantomJS doesn't support tab actions");
         }
-
-        $handle = $this->webDriver->getWindowHandle();
-        $handles = $this->webDriver->getWindowHandles();
-        $currentHandleIdx = array_search($handle, $handles);
-        $newHandleIdx = ($currentHandleIdx + $offset) % count($handles);
-        if ($newHandleIdx < 0) {
-            $newHandleIdx = count($handles) + $newHandleIdx;
+        $handle = $this->web_driver->get_window_handle();
+        $handles = $this->web_driver->get_window_handles();
+        $current_handle_idx = array_search($handle, $handles);
+        $new_handle_idx = ($current_handle_idx + $offset) % count($handles);
+        if ($new_handle_idx < 0) {
+            $new_handle_idx = count($handles) + $new_handle_idx;
         }
-        return $handles[$newHandleIdx];
+        return $handles[$new_handle_idx];
     }
-
     /**
      * Waits for element and runs a sequence of actions inside its context.
      * Actions can be defined with array, callback, or `Codeception\Util\ActionSequence` instance.
@@ -3615,61 +3034,50 @@ class WebDriver extends CodeceptionModule implements
      * @param string|array|WebDriverBy $element
      * @param callable|array|\Codeception\Util\ActionSequence $actions
      */
-    public function performOn($element, $actions, int $timeout = 10): void
+    public function perform_on($element, $actions, int $timeout = 10): void
     {
-        $this->waitForElement($element, $timeout);
-        $this->setBaseElement($element);
-        $this->debugSection('InnerText', $this->getBaseElement()->getText());
-
+        $this->wait_for_element($element, $timeout);
+        $this->set_base_element($element);
+        $this->debug_section('InnerText', $this->get_base_element()->get_text());
         if (is_callable($actions)) {
             $actions($this);
-            $this->setBaseElement();
+            $this->set_base_element();
             return;
         }
-
         if (is_array($actions)) {
-            $actions = ActionSequence::build()->fromArray($actions);
+            $actions = Action_Sequence::build()->from_array($actions);
         }
-
-        if (!$actions instanceof ActionSequence) {
+        if (!$actions instanceof Action_Sequence) {
             throw new InvalidArgumentException('2nd parameter, actions should be callback, ActionSequence or array');
         }
-
         $actions->run($this);
-        $this->setBaseElement();
+        $this->set_base_element();
     }
-
     /**
      * @param string|array|WebDriverBy $element
      */
-    protected function setBaseElement($element = null): void
+    protected function set_base_element($element = null): void
     {
         if ($element === null) {
-            $this->baseElement = $this->webDriver;
+            $this->base_element = $this->web_driver;
             return;
         }
-
-        $this->baseElement = $this->matchFirstOrFail($this->webDriver, $element);
+        $this->base_element = $this->match_first_or_fail($this->web_driver, $element);
     }
-
-    protected function enableImplicitWait(): void
+    protected function enable_implicit_wait(): void
     {
         if (!$this->config['wait']) {
             return;
         }
-
-        $this->webDriver->manage()->timeouts()->implicitlyWait($this->config['wait']);
+        $this->web_driver->manage()->timeouts()->implicitly_wait($this->config['wait']);
     }
-
-    protected function disableImplicitWait(): void
+    protected function disable_implicit_wait(): void
     {
         if (!$this->config['wait']) {
             return;
         }
-
-        $this->webDriver->manage()->timeouts()->implicitlyWait(0);
+        $this->web_driver->manage()->timeouts()->implicitly_wait(0);
     }
-
     /**
      * From symfony/dom-crawler
      *
@@ -3690,16 +3098,14 @@ class WebDriver extends CodeceptionModule implements
      *
      * @return string Converted string
      */
-    private static function xPathLiteral($s): string
+    private static function x_path_literal($s): string
     {
         if (!str_contains((string) $s, "'")) {
             return sprintf("'%s'", $s);
         }
-
         if (!str_contains((string) $s, '"')) {
             return sprintf('"%s"', $s);
         }
-
         $string = $s;
         $parts = [];
         while (true) {
@@ -3712,7 +3118,6 @@ class WebDriver extends CodeceptionModule implements
                 break;
             }
         }
-
         return sprintf('concat(%s)', implode(', ', $parts));
     }
 }

@@ -1,54 +1,39 @@
 <?php
 
-declare(strict_types=1);
-
+declare (strict_types=1);
 namespace Codeception\Constraint;
 
 use Codeception\Util\Locator;
-use Facebook\WebDriver\WebDriverBy;
-use Facebook\WebDriver\WebDriverElement;
-
+use Facebook\Web_Driver\Web_Driver_By;
+use Facebook\Web_Driver\Web_Driver_Element;
 use function is_string;
-
-use PHPUnit\Framework\ExpectationFailedException;
-
-use SebastianBergmann\Comparator\ComparisonFailure;
-
-class WebDriverNot extends WebDriver
+use Php_Unit\Framework\Expectation_Failed_Exception;
+use Sebastian_Bergmann\Comparator\Comparison_Failure;
+class Web_Driver_Not extends Web_Driver
 {
     protected function matches($nodes): bool
     {
         return !parent::matches($nodes);
     }
-
     /**
      * @param WebDriverElement[] $nodes
      * @param string|array|WebDriverBy $selector
      */
-    protected function fail($nodes, $selector, ?ComparisonFailure $comparisonFailure = null): never
+    protected function fail($nodes, $selector, ?Comparison_Failure $comparison_failure = null): never
     {
         if (!is_string($selector) || !str_contains($selector, "'")) {
-            $selector = Locator::humanReadableString($selector);
+            $selector = Locator::human_readable_string($selector);
         }
         if (!$this->string) {
-            throw new ExpectationFailedException(
-                "Element {$selector} was found",
-                $comparisonFailure
-            );
+            throw new Expectation_Failed_Exception("Element {$selector} was found", $comparison_failure);
         }
-
         $output = "There was {$selector} element";
-        $output .= ' ' . $this->uriMessage('on page');
-        $output .= $this->nodesList($nodes, $this->string);
+        $output .= ' ' . $this->uri_message('on page');
+        $output .= $this->nodes_list($nodes, $this->string);
         $output .= "\ncontaining '{$this->string}'";
-
-        throw new ExpectationFailedException(
-            $output,
-            $comparisonFailure
-        );
+        throw new Expectation_Failed_Exception($output, $comparison_failure);
     }
-
-    public function toString(): string
+    public function to_string(): string
     {
         if ($this->string) {
             return 'that contains text "' . $this->string . '"';

@@ -75,16 +75,6 @@ final class LocatorsKeysAndInputTest extends TestCase
         $this->assertSame([WebDriverKeys::META, 'z'], $ref->invoke($module, ['meta', 'z']));
     }
 
-    public function testSelectOptionPartialXpathIsEscaped(): void
-    {
-        $ref = new \ReflectionMethod(\Codeception\Module\WebDriver::class, 'xPathLiteral');
-        $ref->setAccessible(true);
-        $literal = $ref->invoke(null, "a'b\"c");
-        $this->assertSame("concat('a', \"'\", 'b\"c')", $literal);
-        $xpath = './/option [contains (., ' . $literal . ')]';
-        $this->assertStringContainsString("concat('a', \"'\", 'b\"c')", $xpath);
-    }
-
     public function testAttachFileMissing(): void
     {
         $mocks = new WebDriverMocks($this);

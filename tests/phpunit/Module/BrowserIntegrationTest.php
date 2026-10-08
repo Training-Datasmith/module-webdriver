@@ -32,14 +32,15 @@ final class BrowserIntegrationTest extends TestCase
         self::$driverPort = self::freePort();
         $router = dirname(__DIR__, 2) . '/data/app/index.php';
         $cmd = sprintf(
-            'php8.1 -S 127.0.0.1:%d %s',
+            '%s -S 127.0.0.1:%d %s',
+            escapeshellarg(PHP_BINARY),
             self::$appPort,
             escapeshellarg($router)
         );
         self::$phpServer = self::startProcess($cmd);
         self::waitForPort(self::$appPort);
 
-        $chrome = '/usr/local/bin/google-chrome';
+        $chrome = self::resolveChromeBinary();
         $driver = self::resolveChromedriver();
         $cmdDriver = sprintf(
             '%s --port=%d --allowed-ips=127.0.0.1 --allowed-origins=* --url-base=/wd/hub 2>/dev/null',
@@ -114,10 +115,20 @@ final class BrowserIntegrationTest extends TestCase
 
     private static function freePort(): int
     {
-        $socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
-        socket_bind($socket, '127.0.0.1', 0);
-        socket_getsockname($socket, $addr, $port);
-        socket_close($socket);
+        $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+        if ($server === false) {
+            throw new \RuntimeException('Failed to bind free port: ' . $errstr);
+        }
+        $name = stream_socket_get_name($server, false);
+        fclose($server);
+        if (!is_string($name)) {
+            throw new \RuntimeException('Failed to read bound socket name');
+        }
+        $port = (int) substr($name, strrpos($name, ':') + 1);
+        if ($port <= 0) {
+            throw new \RuntimeException('Failed to parse free port from ' . $name);
+        }
+
         return $port;
     }
 
@@ -157,13 +168,31 @@ final class BrowserIntegrationTest extends TestCase
         }
     }
 
-    private static function resolveChromedriver(): string
+    private static function resolveChromeBinary(): string
     {
-        foreach (['/tmp/chromedriver-linux64/chromedriver', '/usr/bin/chromedriver', '/usr/local/bin/chromedriver', '/usr/lib/chromium-browser/chromedriver'] as $path) {
+        $fromEnv = getenv('WEBDRIVER_TEST_CHROME_BINARY');
+        if (is_string($fromEnv) && $fromEnv !== '' && is_executable($fromEnv)) {
+            return $fromEnv;
+        }
+        foreach (['/usr/bin/google-chrome', '/usr/local/bin/google-chrome'] as $path) {
             if (is_executable($path)) {
                 return $path;
             }
         }
-        throw new \RuntimeException('Chromedriver not found; install chromium-chromedriver package');
+        throw new \RuntimeException('Chrome binary not found; set WEBDRIVER_TEST_CHROME_BINARY');
+    }
+
+    private static function resolveChromedriver(): string
+    {
+        $fromEnv = getenv('WEBDRIVER_TEST_CHROMEDRIVER_BINARY');
+        if (is_string($fromEnv) && $fromEnv !== '' && is_executable($fromEnv)) {
+            return $fromEnv;
+        }
+        foreach (['/usr/bin/chromedriver', '/usr/local/bin/chromedriver'] as $path) {
+            if (is_executable($path)) {
+                return $path;
+            }
+        }
+        throw new \RuntimeException('Chromedriver not found; set WEBDRIVER_TEST_CHROMEDRIVER_BINARY');
     }
 }

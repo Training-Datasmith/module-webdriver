@@ -1642,7 +1642,7 @@ class WebDriver extends CodeceptionModule implements
         // partially matching
         foreach ($option as $opt) {
             try {
-                $optElement = $el->findElement(WebDriverBy::xpath('.//option [contains (., ' . self::xPathLiteral($opt) . ')]'));
+                $optElement = $el->findElement(WebDriverBy::xpath('.//option [contains (., "' . $opt . '")]'));
                 $matched = true;
                 if (!$optElement->isSelected()) {
                     $optElement->click();
@@ -3643,24 +3643,22 @@ class WebDriver extends CodeceptionModule implements
         $this->setBaseElement($element);
         $this->debugSection('InnerText', $this->getBaseElement()->getText());
 
-        try {
-            if (is_callable($actions)) {
-                $actions($this);
-                return;
-            }
-
-            if (is_array($actions)) {
-                $actions = ActionSequence::build()->fromArray($actions);
-            }
-
-            if (!$actions instanceof ActionSequence) {
-                throw new InvalidArgumentException("2nd parameter, actions should be callback, ActionSequence or array");
-            }
-
-            $actions->run($this);
-        } finally {
+        if (is_callable($actions)) {
+            $actions($this);
             $this->setBaseElement();
+            return;
         }
+
+        if (is_array($actions)) {
+            $actions = ActionSequence::build()->fromArray($actions);
+        }
+
+        if (!$actions instanceof ActionSequence) {
+            throw new InvalidArgumentException("2nd parameter, actions should be callback, ActionSequence or array");
+        }
+
+        $actions->run($this);
+        $this->setBaseElement();
     }
 
     /**

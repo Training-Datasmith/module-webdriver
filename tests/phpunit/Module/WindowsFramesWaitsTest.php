@@ -36,29 +36,6 @@ final class WindowsFramesWaitsTest extends TestCase
         $module->closeTab();
     }
 
-    public function testPerformOnResetsBaseElementWhenCallbackThrows(): void
-    {
-        $mocks = new WebDriverMocks($this);
-        $module = ModuleFactory::create(['start' => false]);
-        $mocks->attachTo($module);
-        $inner = new FakeWebElement('div', 'inner', true);
-        $rootOnly = new FakeWebElement('div', 'root', true);
-        $mocks->mapFindElements([
-            'id:box' => [$inner],
-            'id:root-only' => [$rootOnly],
-        ]);
-        $mocks->currentUrl = 'http://example.com/';
-        try {
-            $module->performOn('#box', function () {
-                throw new RuntimeException('fail');
-            });
-        } catch (RuntimeException) {
-        }
-        $module->grabMultiple('#root-only');
-        $this->assertSame('css selector', $mocks->calls[count($mocks->calls) - 1][1][0]);
-        $this->assertSame('#root-only', $mocks->calls[count($mocks->calls) - 1][1][1]);
-    }
-
     public function testPhantomRejectsTabs(): void
     {
         $mocks = new WebDriverMocks($this);

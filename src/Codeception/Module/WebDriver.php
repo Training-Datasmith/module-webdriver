@@ -1642,7 +1642,7 @@ class WebDriver extends CodeceptionModule implements
         // partially matching
         foreach ($option as $opt) {
             try {
-                $optElement = $el->findElement(WebDriverBy::xpath('.//option [contains (., "' . $opt . '")]'));
+                $optElement = $el->findElement(WebDriverBy::xpath('.//option [contains (., ' . self::xPathLiteral($opt) . ')]'));
                 $matched = true;
                 if (!$optElement->isSelected()) {
                     $optElement->click();
@@ -1947,7 +1947,7 @@ class WebDriver extends CodeceptionModule implements
      */
     public function type(string $text, int $delay = 0): void
     {
-        $keys = str_split($text);
+        $keys = mb_str_split($text);
         foreach ($keys as $key) {
             sleep($delay);
             $this->webDriver->getKeyboard()->pressKey($key);
@@ -3467,7 +3467,7 @@ class WebDriver extends CodeceptionModule implements
             return false;
         }
 
-        return (bool) preg_match('/\.' . preg_quote($cookieDomain, '/') . '$/', $domain);
+        return (bool) preg_match('/\.' . preg_quote($cookieDomain, '/') . '$/i', $domain);
     }
 
     protected function isPhantom(): bool
@@ -3643,22 +3643,24 @@ class WebDriver extends CodeceptionModule implements
         $this->setBaseElement($element);
         $this->debugSection('InnerText', $this->getBaseElement()->getText());
 
-        if (is_callable($actions)) {
-            $actions($this);
+        try {
+            if (is_callable($actions)) {
+                $actions($this);
+                return;
+            }
+
+            if (is_array($actions)) {
+                $actions = ActionSequence::build()->fromArray($actions);
+            }
+
+            if (!$actions instanceof ActionSequence) {
+                throw new InvalidArgumentException("2nd parameter, actions should be callback, ActionSequence or array");
+            }
+
+            $actions->run($this);
+        } finally {
             $this->setBaseElement();
-            return;
         }
-
-        if (is_array($actions)) {
-            $actions = ActionSequence::build()->fromArray($actions);
-        }
-
-        if (!$actions instanceof ActionSequence) {
-            throw new InvalidArgumentException("2nd parameter, actions should be callback, ActionSequence or array");
-        }
-
-        $actions->run($this);
-        $this->setBaseElement();
     }
 
     /**

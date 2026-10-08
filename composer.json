@@ -40,7 +40,8 @@
             "tests/unit/Codeception/Constraints/TestedWebElement.php"
         ],
         "psr-4": {
-            "Tests\\Web\\": "tests/web/"
+            "Tests\\Web\\": "tests/web/",
+            "Tests\\PhpUnit\\": "tests/phpunit/"
         }
     },
     "config": {

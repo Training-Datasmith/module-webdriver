@@ -21,3 +21,9 @@ if (!is_dir($debugDir)) {
 }
 @chmod($outputDir, 0777);
 @chmod($debugDir, 0777);
+
+$supportGenerated = $root . '/tests/support/_generated';
+if (!is_dir($supportGenerated)) {
+    mkdir($supportGenerated, 0777, true);
+}
+@chmod($supportGenerated, 0777);

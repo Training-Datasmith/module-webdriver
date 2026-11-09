@@ -63,5 +63,4 @@ final class AssertionsAndElementsTest extends TestCase
         $this->expectException(ElementNotFound::class);
         $module->grabTextFrom('#missing#');
     }
-
 }

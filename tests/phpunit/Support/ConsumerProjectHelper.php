@@ -6,6 +6,15 @@ namespace Tests\PhpUnit\Support;
 
 final class ConsumerProjectHelper
 {
+    private const PACKAGE_EXCLUDE = [
+        'vendor',
+        '.git',
+        '.phpunit.cache',
+        'tests/output',
+        '.ci-php-runtime',
+        '.ci-browsers',
+    ];
+
     public static function packageRoot(): string
     {
         return dirname(__DIR__, 3);
@@ -13,9 +22,10 @@ final class ConsumerProjectHelper
 
     public static function createConsumerProject(): string
     {
-        $root = self::packageRoot();
+        $stagingRoot = self::createPackageStagingCopy();
         $dir = sys_get_temp_dir() . '/module-webdriver-consumer-' . bin2hex(random_bytes(8));
         if (!mkdir($dir) && !is_dir($dir)) {
+            self::deleteDirectory($stagingRoot);
             throw new \RuntimeException('Failed to create consumer directory: ' . $dir);
         }
 
@@ -27,8 +37,8 @@ final class ConsumerProjectHelper
             'repositories' => [
                 [
                     'type' => 'path',
-                    'url' => $root,
-                    'options' => ['symlink' => true],
+                    'url' => $stagingRoot,
+                    'options' => ['symlink' => false],
                 ],
             ],
             'minimum-stability' => 'dev',
@@ -46,6 +56,7 @@ final class ConsumerProjectHelper
             json_encode($composer, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
         );
         if ($written === false) {
+            self::deleteDirectory($stagingRoot);
             throw new \RuntimeException('Failed to write consumer composer.json');
         }
 
@@ -54,77 +65,68 @@ final class ConsumerProjectHelper
 
     public static function installDependencies(string $consumerDir): void
     {
-        if (extension_loaded('zip')) {
-            self::run(
-                array_merge(self::composerCommand(), ['update', '--no-interaction', '--no-progress']),
-                $consumerDir
-            );
-        } else {
-            self::installDependenciesWithDocker($consumerDir);
+        if (!extension_loaded('zip')) {
+            throw new \RuntimeException('ext-zip is required for consumer composer tests');
         }
-        $installedPath = $consumerDir . '/vendor/codeception/module-webdriver';
-        $nestedVendor = $installedPath . '/vendor';
-        if (is_dir($nestedVendor)) {
-            $packageRoot = realpath(self::packageRoot());
-            $resolvedInstall = realpath($installedPath);
-            $isDevSymlink = is_link($installedPath)
-                && $packageRoot !== false
-                && $resolvedInstall === $packageRoot;
-            $rootVendor = $packageRoot !== false ? realpath($packageRoot . '/vendor') : false;
-            $nestedResolved = realpath($nestedVendor);
-            if ($isDevSymlink && $rootVendor !== false && $nestedResolved === $rootVendor) {
-                // Path-repository dev install may expose the checkout vendor tree via symlink.
-            } else {
-                self::deleteDirectory($nestedVendor);
-                if (is_dir($nestedVendor)) {
-                    throw new \RuntimeException('Nested vendor in package must not exist');
-                }
-            }
-        }
-    }
-
-    private static function installDependenciesWithDocker(string $consumerDir): void
-    {
-        $packageRoot = self::packageRoot();
-        $phpImage = 'php@sha256:76e563191d1ade120313a8736df24154d21da5155c0756f147c0b01bd19d9087';
-        $escapedConsumer = escapeshellarg($consumerDir);
-        $escapedRoot = escapeshellarg($packageRoot);
-        $docker = trim((string) shell_exec('command -v docker 2>/dev/null'));
-        if ($docker === '') {
-            $sudo = trim((string) shell_exec('command -v sudo 2>/dev/null'));
-            if ($sudo !== '') {
-                $docker = 'sudo docker';
-            } else {
-                throw new \RuntimeException('docker binary not found');
-            }
-        }
-        $command = sprintf(
-            '%s run --rm -v %s:/workspace -v %s:%s -w %s %s bash -lc %s',
-            $docker,
-            $escapedRoot,
-            $escapedConsumer,
-            $escapedConsumer,
-            $escapedConsumer,
-            $phpImage,
-            escapeshellarg(
-                'set -e; export DEBIAN_FRONTEND=noninteractive; apt-get update -qq; '
-                . 'apt-get install -y -qq git unzip libzip-dev; docker-php-ext-install zip >/dev/null; '
-                . 'curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer; '
-                . 'git config --global --add safe.directory /workspace; '
-                . 'composer update --no-interaction --no-progress'
-            )
+        $result = self::run(
+            array_merge(self::composerCommand(), ['update', '--no-interaction', '--no-progress']),
+            $consumerDir
         );
-        $output = [];
-        $exitCode = 0;
-        exec($command . ' 2>&1', $output, $exitCode);
-        if ($exitCode !== 0) {
-            throw new \RuntimeException(
-                "Docker composer update failed with exit {$exitCode}:\n" . implode("\n", $output)
-            );
+        if ($result['exitCode'] !== 0) {
+            throw new \RuntimeException('composer update failed: ' . $result['output']);
+        }
+        if (is_dir($consumerDir . '/vendor/codeception/module-webdriver/vendor')) {
+            throw new \RuntimeException('Nested vendor in package must not exist');
+        }
+        self::restoreComposerIgnoredPackageDevFiles($consumerDir);
+    }
+
+    /**
+     * Composer export-ignore omits tests and *.yml from path installs; copy them from the path source for consumer suites.
+     */
+    private static function restoreComposerIgnoredPackageDevFiles(string $consumerDir): void
+    {
+        /** @var array<string, mixed> $composer */
+        $composer = json_decode(
+            (string) file_get_contents($consumerDir . '/composer.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+        $staging = null;
+        foreach ($composer['repositories'] ?? [] as $repository) {
+            if (($repository['type'] ?? '') === 'path' && isset($repository['url']) && is_string($repository['url'])) {
+                $staging = $repository['url'];
+                break;
+            }
+        }
+        if ($staging === null || !is_dir($staging)) {
+            throw new \RuntimeException('Path repository staging directory is missing');
+        }
+        $installed = $consumerDir . '/vendor/codeception/module-webdriver';
+        if (!is_dir($installed)) {
+            throw new \RuntimeException('Installed package directory is missing');
+        }
+        $pairs = [
+            $staging . '/codeception.yml' => $installed . '/codeception.yml',
+            $staging . '/tests' => $installed . '/tests',
+        ];
+        foreach ($pairs as $from => $to) {
+            if (!is_file($from) && !is_dir($from)) {
+                throw new \RuntimeException('Missing package dev path: ' . $from);
+            }
+            if (is_dir($from)) {
+                self::mirrorDirectory($from, $to, $from);
+            } elseif (!copy($from, $to)) {
+                throw new \RuntimeException('Failed to copy: ' . $from);
+            }
         }
     }
 
-    public static function assertConsumerAutoloadHasNoTestHelpers(string $consumerDir): void
+    /**
+     * @return array{classmap: array<string, string>, psr4: array<string, list<string>>}
+     */
+    public static function consumerAutoloadMaps(string $consumerDir): array
     {
         $classmapFile = $consumerDir . '/vendor/composer/autoload_classmap.php';
         $psr4File = $consumerDir . '/vendor/composer/autoload_psr4.php';
@@ -137,27 +139,19 @@ final class ConsumerProjectHelper
         /** @var array<string, list<string>> $psr4 */
         $psr4 = require $psr4File;
 
-        if (isset($classmap['Tests\\Unit\\Codeception\\Constraints\\TestedWebElement'])) {
-            throw new \RuntimeException('Consumer autoload must not map TestedWebElement');
-        }
-        if (isset($classmap['data'])) {
-            throw new \RuntimeException('Consumer autoload must not map data');
-        }
-        if (isset($psr4['Tests\\Web\\'])) {
-            throw new \RuntimeException('Consumer autoload must not map Tests\\Web\\');
-        }
+        return ['classmap' => $classmap, 'psr4' => $psr4];
     }
 
     /**
-   * @param list<string> $codeceptArgs
-   * @return array{exitCode: int, output: string}
-   */
+     * @param list<string> $codeceptArgs
+     * @return array{exitCode: int, output: string}
+     */
     public static function runCodecept(string $consumerDir, string $packageConfig, array $codeceptArgs): array
     {
-        $cmd = array_merge(
+        $buildResult = self::run(
             [PHP_BINARY, self::codeceptBinary($consumerDir), '-c', $packageConfig, 'build'],
+            $consumerDir
         );
-        $buildResult = self::run($cmd, $consumerDir);
         if ($buildResult['exitCode'] !== 0) {
             throw new \RuntimeException('codecept build failed: ' . $buildResult['output']);
         }
@@ -171,7 +165,6 @@ final class ConsumerProjectHelper
     }
 
     /**
-     * @param list<string> $args
      * @return array{exitCode: int, output: string}
      */
     public static function runStandaloneCodeceptUnit(): array
@@ -188,6 +181,9 @@ final class ConsumerProjectHelper
         );
     }
 
+  /**
+   * @param array{exitCode: int, output: string} $result
+   */
     public static function assertStrictCodeceptOutput(array $result): void
     {
         if ($result['exitCode'] !== 0) {
@@ -199,16 +195,12 @@ final class ConsumerProjectHelper
         if (!is_string($plain)) {
             throw new \RuntimeException('Failed to normalize codecept output');
         }
-        $hasOk = false;
         foreach (explode("\n", $plain) as $line) {
             if (preg_match('/^(Warning|Deprecated):/', $line) === 1) {
                 throw new \RuntimeException('codecept output must not contain warnings/deprecations: ' . $line);
             }
-            if (preg_match('/^OK \(/', $line) === 1) {
-                $hasOk = true;
-            }
         }
-        if (!$hasOk) {
+        if (preg_match('/^OK \(/m', $plain) !== 1) {
             throw new \RuntimeException("codecept output missing OK line:\n" . $result['output']);
         }
     }
@@ -218,6 +210,25 @@ final class ConsumerProjectHelper
         if (!str_starts_with($consumerDir, sys_get_temp_dir())) {
             return;
         }
+        $composerJson = $consumerDir . '/composer.json';
+        if (is_file($composerJson)) {
+            $decoded = json_decode((string) file_get_contents($composerJson), true);
+            if (is_array($decoded)) {
+                foreach ($decoded['repositories'] ?? [] as $repository) {
+                    if (!is_array($repository)) {
+                        continue;
+                    }
+                    $url = $repository['url'] ?? '';
+                    if (
+                        is_string($url)
+                        && str_starts_with($url, sys_get_temp_dir())
+                        && str_contains($url, 'module-webdriver-staging-')
+                    ) {
+                        self::deleteDirectory($url);
+                    }
+                }
+            }
+        }
         self::deleteDirectory($consumerDir);
     }
 
@@ -226,40 +237,63 @@ final class ConsumerProjectHelper
      */
     public static function composerCommand(): array
     {
+        $composerBin = getenv('GATE_COMPOSER_BIN');
+        if (is_string($composerBin) && $composerBin !== '' && is_executable($composerBin)) {
+            return [PHP_BINARY, $composerBin];
+        }
+
         $which = trim((string) shell_exec('command -v composer 2>/dev/null'));
         if ($which !== '' && is_executable($which)) {
             return [PHP_BINARY, $which];
         }
 
-        $phar = sys_get_temp_dir() . '/codeception-module-webdriver-composer.phar';
-        if (!is_file($phar)) {
-            $installer = file_get_contents('https://getcomposer.org/installer');
-            if ($installer === false) {
-                throw new \RuntimeException('Failed to download Composer installer');
+        throw new \RuntimeException(
+            'Composer binary not found; set GATE_COMPOSER_BIN or install composer on the runner'
+        );
+    }
+
+    private static function createPackageStagingCopy(): string
+    {
+        $root = self::packageRoot();
+        $staging = sys_get_temp_dir() . '/module-webdriver-staging-' . bin2hex(random_bytes(8));
+        if (!mkdir($staging) && !is_dir($staging)) {
+            throw new \RuntimeException('Failed to create staging directory: ' . $staging);
+        }
+        self::mirrorDirectory($root, $staging, $root);
+        return $staging;
+    }
+
+    private static function mirrorDirectory(string $source, string $destination, string $packageRoot): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $item) {
+            $relative = substr($item->getPathname(), strlen($packageRoot) + 1);
+            if ($relative === false || $relative === '') {
+                continue;
             }
-            $expectedSig = trim((string) file_get_contents('https://composer.github.io/installer.sig'));
-            if ($expectedSig === '') {
-                throw new \RuntimeException('Failed to download Composer installer signature');
+            foreach (self::PACKAGE_EXCLUDE as $exclude) {
+                if ($relative === $exclude || str_starts_with($relative, $exclude . '/')) {
+                    continue 2;
+                }
             }
-            $tmpInstaller = sys_get_temp_dir() . '/composer-setup-' . bin2hex(random_bytes(4)) . '.php';
-            if (file_put_contents($tmpInstaller, $installer) === false) {
-                throw new \RuntimeException('Failed to write Composer installer');
-            }
-            if (hash_file('sha384', $tmpInstaller) !== $expectedSig) {
-                unlink($tmpInstaller);
-                throw new \RuntimeException('Composer installer signature mismatch');
-            }
-            $result = self::run(
-                [PHP_BINARY, $tmpInstaller, '--install-dir=' . dirname($phar), '--filename=' . basename($phar)],
-                sys_get_temp_dir()
-            );
-            unlink($tmpInstaller);
-            if ($result['exitCode'] !== 0 || !is_file($phar)) {
-                throw new \RuntimeException('Composer phar install failed: ' . $result['output']);
+            $target = $destination . DIRECTORY_SEPARATOR . $relative;
+            if ($item->isDir()) {
+                if (!is_dir($target) && !mkdir($target, 0775, true) && !is_dir($target)) {
+                    throw new \RuntimeException('Failed to create directory: ' . $target);
+                }
+            } else {
+                $parent = dirname($target);
+                if (!is_dir($parent) && !mkdir($parent, 0775, true) && !is_dir($parent)) {
+                    throw new \RuntimeException('Failed to create directory: ' . $parent);
+                }
+                if (!copy($item->getPathname(), $target)) {
+                    throw new \RuntimeException('Failed to copy: ' . $item->getPathname());
+                }
             }
         }
-
-        return [PHP_BINARY, $phar];
     }
 
     private static function codeceptBinary(string $projectWithVendor): string
@@ -271,15 +305,45 @@ final class ConsumerProjectHelper
      * @param list<string> $command
      * @return array{exitCode: int, output: string}
      */
+    /**
+     * @return array<string, string>
+     */
+    public static function phpProcessEnvironment(): array
+    {
+        $path = getenv('PATH');
+        if (!is_string($path) || $path === '') {
+            $path = '/usr/bin:/bin';
+        }
+        $home = sys_get_temp_dir() . '/module-webdriver-gate-home';
+        if (!is_dir($home) && !mkdir($home, 0777, true) && !is_dir($home)) {
+            throw new \RuntimeException('Failed to create gate HOME directory: ' . $home);
+        }
+        $env = [
+            'LD_LIBRARY_PATH' => '/opt/php/lib/php-gate-deps',
+            'TZ' => 'UTC',
+            'PHP_INI_SCAN_DIR' => '/opt/php/etc/conf.d',
+            'PATH' => '/opt/php/bin:' . $path,
+            'HOME' => $home,
+            'COMPOSER_HOME' => $home . '/composer',
+        ];
+        $composer = getenv('GATE_COMPOSER_BIN');
+        if (is_string($composer) && $composer !== '') {
+            $env['GATE_COMPOSER_BIN'] = $composer;
+        }
+
+        return $env;
+    }
+
     public static function run(array $command, string $cwd, array $env = []): array
     {
         $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $mergedEnv = array_merge(self::phpProcessEnvironment(), $env);
         $proc = proc_open(
             $command,
             $spec,
             $pipes,
             $cwd,
-            $env !== [] ? $env : null
+            $mergedEnv
         );
         if (!is_resource($proc)) {
             throw new \RuntimeException('Failed to start: ' . implode(' ', $command));

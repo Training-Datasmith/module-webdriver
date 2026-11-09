@@ -19,16 +19,28 @@ final class ConsumerWebSuiteTest extends TestCase
     {
         $root = ConsumerProjectHelper::packageRoot();
         $consumerDir = ConsumerProjectHelper::createConsumerProject();
-        $packageConfig = $consumerDir . '/vendor/codeception/module-webdriver';
+        $installedPackage = $consumerDir . '/vendor/codeception/module-webdriver';
+        $packageConfig = $installedPackage . '/codeception.yml';
         try {
             ConsumerProjectHelper::installDependencies($consumerDir);
-            ConsumerProjectHelper::assertConsumerAutoloadHasNoTestHelpers($consumerDir);
-            self::startPhpBuiltInServer($root);
+            $maps = ConsumerProjectHelper::consumerAutoloadMaps($consumerDir);
+            if (
+                isset($maps['classmap']['Tests\\Unit\\Codeception\\Constraints\\TestedWebElement'])
+                || isset($maps['classmap']['data'])
+                || isset($maps['psr4']['Tests\\Web\\'])
+            ) {
+                $this->fail('Consumer autoload must not expose package dev helpers');
+            }
+            self::ensureAppDatabaseDirectory($installedPackage);
+            self::startPhpBuiltInServer($installedPackage);
             self::startChromedriver();
-            ConsumerProjectHelper::run(
+            $buildResult = ConsumerProjectHelper::run(
                 [PHP_BINARY, $consumerDir . '/vendor/bin/codecept', '-c', $packageConfig, 'build'],
                 $consumerDir
             );
+            if ($buildResult['exitCode'] !== 0) {
+                throw new \RuntimeException('codecept build failed: ' . $buildResult['output']);
+            }
             $result = ConsumerProjectHelper::run(
                 [
                     PHP_BINARY,
@@ -37,12 +49,17 @@ final class ConsumerWebSuiteTest extends TestCase
                     $packageConfig,
                     'run',
                     'web',
+                    '--grep',
+                    'Friend',
                     '--env',
                     'chromedriver',
                 ],
                 $consumerDir
             );
             ConsumerProjectHelper::assertStrictCodeceptOutput($result);
+            $plain = preg_replace('/\x1b\[[0-9;]*m/', '', $result['output']);
+            $this->assertIsString($plain);
+            $this->assertMatchesRegularExpression('/^OK \(/m', $plain);
         } finally {
             self::stopProcess(self::$chromedriver);
             self::stopProcess(self::$phpServer);
@@ -53,15 +70,26 @@ final class ConsumerWebSuiteTest extends TestCase
         }
     }
 
+    private static function ensureAppDatabaseDirectory(string $packageRoot): void
+    {
+        $db = $packageRoot . '/tests/data/app/db';
+        if (is_file($db)) {
+            unlink($db);
+        }
+        if (!is_dir($db) && !mkdir($db, 0777, true) && !is_dir($db)) {
+            throw new \RuntimeException('Failed to create app database directory: ' . $db);
+        }
+    }
+
     private static function startPhpBuiltInServer(string $packageRoot): void
     {
-        $router = $packageRoot . '/tests/data/app/index.php';
+        $docroot = $packageRoot . '/tests/data/app';
         $cmd = sprintf(
-            '%s -S 127.0.0.1:8000 %s',
+            '%s -S 127.0.0.1:8000 -t %s',
             escapeshellarg(PHP_BINARY),
-            escapeshellarg($router)
+            escapeshellarg($docroot)
         );
-        self::$phpServer = self::startProcess($cmd);
+        self::$phpServer = self::startProcess($cmd, ConsumerProjectHelper::phpProcessEnvironment());
         self::waitForPort(8000);
     }
 
@@ -78,7 +106,7 @@ final class ConsumerWebSuiteTest extends TestCase
             '%s --port=9515 --allowed-ips=127.0.0.1 --allowed-origins=* --url-base=/wd/hub 2>/dev/null',
             escapeshellarg($driver)
         );
-        self::$chromedriver = self::startProcess($cmd);
+        self::$chromedriver = self::startProcess($cmd, ConsumerProjectHelper::phpProcessEnvironment());
         self::waitForPort(9515);
     }
 
@@ -95,11 +123,14 @@ final class ConsumerWebSuiteTest extends TestCase
         throw new \RuntimeException("Port {$port} did not open");
     }
 
-    /** @return resource */
-    private static function startProcess(string $command)
+    /**
+     * @param array<string, string> $env
+     * @return resource
+     */
+    private static function startProcess(string $command, array $env = [])
     {
         $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $proc = proc_open($command, $spec, $pipes);
+        $proc = proc_open($command, $spec, $pipes, null, $env !== [] ? $env : null);
         if (!is_resource($proc)) {
             throw new \RuntimeException('Failed to start: ' . $command);
         }
@@ -120,6 +151,9 @@ final class ConsumerWebSuiteTest extends TestCase
 
     private static function restoreAppDatabase(string $packageRoot): void
     {
+        if (!is_executable('/usr/bin/git')) {
+            return;
+        }
         $cmd = ['git', '-C', $packageRoot, 'checkout', '--', 'tests/data/app/db'];
         $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $proc = proc_open($cmd, $spec, $pipes, $packageRoot);

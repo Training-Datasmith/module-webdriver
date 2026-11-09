@@ -5,7 +5,8 @@
          colors="true"
          cacheDirectory=".phpunit.cache"
          cacheResult="false"
-         beStrictAboutOutputDuringTests="true">
+         beStrictAboutOutputDuringTests="true"
+         failOnWarning="true">
     <testsuites>
         <testsuite name="consumer-web">
             <file>tests/consumer/ConsumerWebSuiteTest.php</file>

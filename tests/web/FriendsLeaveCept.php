@@ -1,5 +1,6 @@
 <?php
 
+/** @var \Codeception\Scenario $scenario */
 $I = new WebGuy($scenario);
 $I->wantTo('test leave bug');
 $I->amOnPage('/info');

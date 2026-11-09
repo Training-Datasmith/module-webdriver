@@ -6,7 +6,8 @@
          cacheDirectory=".phpunit.cache"
          cacheResult="false"
          executionOrder="depends,defects"
-         beStrictAboutOutputDuringTests="true">
+         beStrictAboutOutputDuringTests="true"
+         failOnWarning="true">
     <testsuites>
         <testsuite name="module-webdriver">
             <directory>tests/phpunit</directory>

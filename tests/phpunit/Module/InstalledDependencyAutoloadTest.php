@@ -14,8 +14,11 @@ final class InstalledDependencyAutoloadTest extends TestCase
         $consumerDir = ConsumerProjectHelper::createConsumerProject();
         try {
             ConsumerProjectHelper::installDependencies($consumerDir);
-            ConsumerProjectHelper::assertConsumerAutoloadHasNoTestHelpers($consumerDir);
-            $this->addToAssertionCount(1);
+            $maps = ConsumerProjectHelper::consumerAutoloadMaps($consumerDir);
+            $this->assertArrayNotHasKey('Tests\\Unit\\Codeception\\Constraints\\TestedWebElement', $maps['classmap']);
+            $this->assertArrayNotHasKey('data', $maps['classmap']);
+            $this->assertArrayNotHasKey('Tests\\Web\\', $maps['psr4']);
+            $this->assertDirectoryDoesNotExist($consumerDir . '/vendor/codeception/module-webdriver/vendor');
         } finally {
             ConsumerProjectHelper::removeConsumer($consumerDir);
         }
@@ -26,11 +29,13 @@ final class InstalledDependencyAutoloadTest extends TestCase
         $consumerDir = ConsumerProjectHelper::createConsumerProject();
         try {
             ConsumerProjectHelper::installDependencies($consumerDir);
-            ConsumerProjectHelper::assertConsumerAutoloadHasNoTestHelpers($consumerDir);
-            $config = $consumerDir . '/vendor/codeception/module-webdriver';
+            ConsumerProjectHelper::consumerAutoloadMaps($consumerDir);
+            $config = $consumerDir . '/vendor/codeception/module-webdriver/codeception.yml';
             $result = ConsumerProjectHelper::runCodecept($consumerDir, $config, ['run', 'unit']);
             ConsumerProjectHelper::assertStrictCodeceptOutput($result);
-            $this->addToAssertionCount(1);
+            $plain = preg_replace('/\x1b\[[0-9;]*m/', '', $result['output']);
+            $this->assertIsString($plain);
+            $this->assertMatchesRegularExpression('/^OK \(/m', $plain);
         } finally {
             ConsumerProjectHelper::removeConsumer($consumerDir);
         }
@@ -40,6 +45,8 @@ final class InstalledDependencyAutoloadTest extends TestCase
     {
         $result = ConsumerProjectHelper::runStandaloneCodeceptUnit();
         ConsumerProjectHelper::assertStrictCodeceptOutput($result);
-        $this->addToAssertionCount(1);
+        $plain = preg_replace('/\x1b\[[0-9;]*m/', '', $result['output']);
+        $this->assertIsString($plain);
+        $this->assertMatchesRegularExpression('/^OK \(/m', $plain);
     }
 }

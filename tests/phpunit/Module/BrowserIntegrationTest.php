@@ -174,7 +174,7 @@ final class BrowserIntegrationTest extends TestCase
         if (is_string($fromEnv) && $fromEnv !== '' && is_executable($fromEnv)) {
             return $fromEnv;
         }
-        foreach (['/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/local/bin/google-chrome'] as $path) {
+        foreach (['/usr/bin/google-chrome', '/usr/local/bin/google-chrome'] as $path) {
             if (is_executable($path)) {
                 return $path;
             }
